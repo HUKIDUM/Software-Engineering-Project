@@ -11,7 +11,8 @@ const {
     deleteReservation,
     getBookedSlots,
     getCustomerEquipmentRequests,
-    updateRequestedEquipment // ✅ อย่าลืม import ฟังก์ชันนี้
+    updateRequestedEquipment,
+    removeEquipmentFromReservation
 } = require('../controllers/reservation');
 
 // Admin can get all reservations
@@ -36,4 +37,7 @@ router.route('/:id')
 
 router.route('/:reservationId/equipment')
     .put(protect, updateRequestedEquipment);
+router.route('/:id/remove-equipment/:equipmentId')
+    .delete(protect, removeEquipmentFromReservation);
+
 module.exports = router;

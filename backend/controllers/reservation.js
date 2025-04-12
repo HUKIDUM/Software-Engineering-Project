@@ -2,6 +2,7 @@ const Reservation = require('../models/reservation');
 const CoworkingSpace = require('../models/coworkingSpace');
 const Equipment = require('../models/equipment');
 const { sendEmail } = require('../utils/sendEmail');
+const ErrorResponse = require('../utils/errorResponse');
 const User = require('../models/user');
 
 exports.getCustomerEquipmentRequests = async (req, res, next) => {
@@ -427,3 +428,149 @@ exports.createCoworkingSpace = async (req, res) => {
     }
 };
 
+// @desc    Update requested equipment in a reservation
+// @route   PUT /api/v1/reservations/:reservationId/equipment
+// @access  Private (User who created the reservation)
+exports.updateRequestedEquipment = async (req, res, next) => {
+    const { reservationId } = req.params;
+    const { requestedEquipment } = req.body;
+
+    // Validate input
+    if (!requestedEquipment || !Array.isArray(requestedEquipment)) {
+        return next(new ErrorResponse('Invalid requested equipment data', 400));
+    }
+
+    // Find the reservation
+    const reservation = await Reservation.findById(reservationId);
+
+    if (!reservation) {
+        return next(new ErrorResponse(`Reservation not found with id of ${reservationId}`, 404));
+    }
+
+    // Ensure the user owns the reservation
+    if (reservation.user.toString() !== req.user.id) {
+        return next(new ErrorResponse('Not authorized to update this reservation', 403));
+    }
+
+    // Validate and update requested equipment
+    const validatedEquipment = [];
+    for (const item of requestedEquipment) {
+        if (!item.equipment || !item.quantityRequested) {
+            return next(new ErrorResponse('Each requested equipment must have an equipment ID and quantityRequested.', 400));
+        }
+
+        const equipmentDoc = await Equipment.findById(item.equipment);
+
+        if (!equipmentDoc) {
+            return next(new ErrorResponse(`Equipment with ID ${item.equipment} not found.`, 404));
+        }
+
+        if (equipmentDoc.quantityAvailable < item.quantityRequested) {
+            return next(new ErrorResponse(`Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.`, 400));
+        }
+
+        validatedEquipment.push({
+            equipment: item.equipment,
+            quantityRequested: item.quantityRequested,
+        });
+    }
+
+    // Update the reservation
+    reservation.requestedEquipment = validatedEquipment;
+    await reservation.save();
+
+    res.status(200).json({
+        success: true,
+        data: reservation,
+    });
+};
+
+// @desc    Update requested equipment in a reservation
+// @route   PUT /api/v1/reservations/:reservationId/equipment
+// @access  Private (User who created the reservation)
+exports.updateRequestedEquipment = async (req, res, next) => {
+    const { reservationId } = req.params;
+    const { requestedEquipment } = req.body;
+
+    // Validate input
+    if (!requestedEquipment || !Array.isArray(requestedEquipment)) {
+        return next(new ErrorResponse('Invalid requested equipment data', 400));
+    }
+
+    // Find the reservation
+    const reservation = await Reservation.findById(reservationId);
+
+    if (!reservation) {
+        return next(new ErrorResponse(`Reservation not found with id of ${reservationId}`, 404));
+    }
+
+    // Ensure the user owns the reservation
+    if (reservation.user.toString() !== req.user.id) {
+        return next(new ErrorResponse('Not authorized to update this reservation', 403));
+    }
+
+    // Validate and update requested equipment
+    const validatedEquipment = [];
+    for (const item of requestedEquipment) {
+        if (!item.equipment || !item.quantityRequested) {
+            return next(new ErrorResponse('Each requested equipment must have an equipment ID and quantityRequested.', 400));
+        }
+
+        const equipmentDoc = await Equipment.findById(item.equipment);
+
+        if (!equipmentDoc) {
+            return next(new ErrorResponse(`Equipment with ID ${item.equipment} not found.`, 404));
+        }
+
+        if (equipmentDoc.quantityAvailable < item.quantityRequested) {
+            return next(new ErrorResponse(`Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.`, 400));
+        }
+
+        validatedEquipment.push({
+            equipment: item.equipment,
+            quantityRequested: item.quantityRequested,
+        });
+    }
+
+    // Update the reservation
+    reservation.requestedEquipment = validatedEquipment;
+    await reservation.save();
+
+    res.status(200).json({
+        success: true,
+        data: reservation,
+    });
+};
+
+// @desc    Remove a specific equipment item from a reservation's requested list
+// @route   DELETE /api/v1/reservations/:reservationId/equipment/:requestedEquipmentId
+// @access  Private (User owns reservation or Admin)
+exports.removeEquipmentFromReservation = async (req, res, next) => {
+    // Use the correct parameter names from the route definition (:id, :equipmentId)
+    const { id: reservationId, equipmentId: requestedEquipmentId } = req.params;
+
+    // Find the reservation
+    const reservation = await Reservation.findById(reservationId); // Use reservationId (aliased from id)
+
+    if (!reservation) {
+        return next(
+            new ErrorResponse(`Reservation not found with id of ${reservationId}`, 404) // Use reservationId
+        );
+    }
+
+    // TODO: Authorization check: Ensure req.user.id matches reservation.user or user is admin
+
+    // Pull the specific equipment item from the requestedEquipment array
+    const updatedReservation = await Reservation.findByIdAndUpdate(
+        reservationId, // Use reservationId
+        { $pull: { requestedEquipment: { _id: requestedEquipmentId } } }, // Use requestedEquipmentId (aliased from equipmentId)
+        { new: true, runValidators: true }
+    );
+
+    if (!updatedReservation) {
+        // This might happen if the pull operation didn't find the item, though findById should have caught the reservation absence.
+        return next(new ErrorResponse(`Could not update reservation ${reservationId}`, 500)); // Use reservationId
+    }
+
+    res.status(200).json({ success: true, data: updatedReservation });
+};

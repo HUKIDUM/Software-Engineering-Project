@@ -14,6 +14,7 @@ interface Equipment {
 }
 
 interface RequestedEquipment {
+  _id: string; // Add the ID for the specific request entry
   equipment: Equipment;
   quantityRequested: number;
 }
@@ -42,6 +43,7 @@ const ReservationsPage = () => {
   const [newTimeSlot, setNewTimeSlot] = useState('');
   const [updateError, setUpdateError] = useState('');
   const [isClient, setIsClient] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<RequestedEquipment[]>([]);
   const router = useRouter();
 
   const timeSlots = [
@@ -98,30 +100,74 @@ const ReservationsPage = () => {
     setEditingReservation(reservation);
     setNewDate(reservation.date.split('T')[0]); // Format date for input
     setNewTimeSlot(reservation.timeSlot);
+    setEditingEquipment(reservation.requestedEquipment || []);
   };
 
   const handleUpdate = async () => {
     if (!editingReservation) return;
 
     try {
+      // Update basic reservation details
       await api.put(`/reservations/${editingReservation._id}`, {
         date: newDate,
         timeSlot: newTimeSlot
       });
 
+      // Update equipment requests
+      await api.put(`/reservations/${editingReservation._id}/equipment`, {
+        requestedEquipment: editingEquipment,
+        reservationId: editingReservation._id
+      });
+
       // Update local state
       setReservations(reservations.map(res =>
         res._id === editingReservation._id
-          ? { ...res, date: newDate, timeSlot: newTimeSlot }
+          ? { 
+              ...res, 
+              date: newDate, 
+              timeSlot: newTimeSlot,
+              requestedEquipment: editingEquipment 
+            }
           : res
       ));
 
       setEditingReservation(null);
+      setEditingEquipment([]);
       setCancelSuccess('Reservation updated successfully');
       setTimeout(() => setCancelSuccess(''), 3000);
     } catch (err) {
       console.error('Error updating reservation:', err);
       setUpdateError('Failed to update reservation. Please try again.');
+      setTimeout(() => setUpdateError(''), 3000);
+    }
+  };
+
+  const handleEquipmentQuantityChange = (equipmentId: string, newQuantity: number) => {
+    setEditingEquipment(prev => prev.map(eq => 
+      eq.equipment._id === equipmentId 
+        ? { ...eq, quantityRequested: newQuantity }
+        : eq
+    ));
+  };
+
+  const handleRemoveEquipment = async (equipmentEntryId: string) => {
+    if (!editingReservation) return;
+
+    try {
+      // Correct the API endpoint path
+      await api.delete(`/reservations/${editingReservation._id}/remove-equipment/${equipmentEntryId}`);
+      
+      // Update local state immediately
+      setEditingEquipment(prev => prev.filter(eq => eq._id !== equipmentEntryId));
+      
+      // Optionally show a success message (can reuse cancelSuccess state or add a new one)
+      setCancelSuccess('Equipment removed successfully');
+      setTimeout(() => setCancelSuccess(''), 3000);
+
+    } catch (err) {
+      console.error('Error removing equipment:', err);
+      // Use updateError state for consistency in the modal
+      setUpdateError('Failed to remove equipment. Please try again.');
       setTimeout(() => setUpdateError(''), 3000);
     }
   };
@@ -187,6 +233,30 @@ const ReservationsPage = () => {
                     <option key={slot} value={slot}>{slot}</option>
                   ))}
                 </select>
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">Equipment</label>
+                {editingEquipment.map((eq) => (
+                  <div key={eq._id} className="flex items-center justify-between space-x-2 mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-700">{eq.equipment.name}</span>
+                      <input
+                        type="number"
+                      min="1"
+                      value={eq.quantityRequested}
+                      onChange={(e) => handleEquipmentQuantityChange(eq.equipment._id, parseInt(e.target.value))}
+                        className="shadow appearance-none border rounded w-20 py-1 px-2 text-gray-700"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleRemoveEquipment(eq._id)}
+                      className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100"
+                      aria-label={`Remove ${eq.equipment.name}`}
+                    >
+                      <FiX size={16} />
+                    </button>
+                  </div>
+                ))}
               </div>
               {updateError && (
                 <div className="mb-4 text-red-500 text-sm">{updateError}</div>

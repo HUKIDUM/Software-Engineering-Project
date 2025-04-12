@@ -11,6 +11,7 @@ interface User {
   role: 'user' | 'admin';
   telephoneNumber: string;
   membership?: {
+    type?: 'basic' /*| 'premium'*/ | 'platinum' | 'gold' | 'diamond' | string;
     status: 'active' | 'cancelled' | 'pending' | string; // Allow other statuses too
   };
 }

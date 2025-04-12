@@ -36,7 +36,7 @@ const userSchema = new mongoose.Schema({
   membership: {
     type: {
       type: String,
-      enum: ['none', 'basic', 'premium'],
+      enum: ['none', 'basic', 'gold', 'platinum', 'diamond', 'premium'],
       default: 'none'
     },
     status: {
@@ -61,6 +61,13 @@ const userSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Sign JWT and return
+userSchema.methods.getSignedJwtToken = function () {
+  return jwt.sign({ userId: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
+  });
+};
 
 // ... rest of schema (pre‑save hook, methods, etc.)
 

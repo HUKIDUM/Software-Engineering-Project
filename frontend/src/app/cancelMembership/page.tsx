@@ -67,7 +67,7 @@ export default function CancelMembershipPage() {
       {!success ? (
         <>
           <p className="mb-6 text-gray-700">
-            Are you sure you want to cancel your premium membership? You will lose access to all premium features.
+            Are you sure you want to cancel your premium membership?
           </p>
 
           {errorMessage && <p className="text-red-500 mb-4">{errorMessage}</p>}
@@ -91,7 +91,7 @@ export default function CancelMembershipPage() {
         </>
       ) : (
         <div className="text-green-700">
-          <p className="mb-4">✅ Your membership has been successfully cancelled.</p>
+          <p className="mb-4">✅ Your membership has been cancelled.</p>
           <button
             onClick={() => router.push('/profile')}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-md"
@@ -103,3 +103,10 @@ export default function CancelMembershipPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

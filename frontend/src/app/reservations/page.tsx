@@ -5,7 +5,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle, FiArchive } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle, FiArchive, FiTool } from 'react-icons/fi';
+
+interface Equipment {
+  _id: string;
+  name: string;
+  description?: string;
+}
+
+interface RequestedEquipment {
+  equipment: Equipment;
+  quantityRequested: number;
+}
 
 interface Reservation {
   _id: string;
@@ -17,6 +28,7 @@ interface Reservation {
   date: string;
   timeSlot: string;
   status: string;
+  requestedEquipment?: RequestedEquipment[];
 }
 
 const ReservationsPage = () => {
@@ -287,6 +299,26 @@ const ReservationsPage = () => {
                               <FiClock className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                               <p>{reservation.timeSlot}</p>
                             </div>
+                            {/* Equipment Section */}
+                            {reservation.requestedEquipment && reservation.requestedEquipment.length > 0 && (
+                              <div className="mt-1 flex items-start text-sm text-gray-500">
+                                <FiTool className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400 mt-0.5" />
+                                <div>
+                                  <p className="font-medium">Equipment:</p>
+                                  <ul className="mt-1 ml-4 space-y-1">
+                                    {reservation.requestedEquipment.map((item, index) => (
+                                      <li key={index} className="flex items-center">
+                                        <span className="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
+                                        {item.equipment.name}
+                                        <span className="ml-1 text-gray-400">
+                                          ({item.quantityRequested} {item.quantityRequested === 1 ? 'unit' : 'units'})
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end space-y-2">

@@ -3,6 +3,7 @@ const CoworkingSpace = require('../models/coworkingSpace');
 const asyncHandler = require('../middleware/async');
 const ErrorResponse = require('../utils/errorResponse');
 
+
 // @desc    Get all equipment, optionally filtered by coworking space
 // @route   GET /api/v1/equipment
 // @route   GET /api/v1/coworkingspaces/:coworkingSpaceId/equipment

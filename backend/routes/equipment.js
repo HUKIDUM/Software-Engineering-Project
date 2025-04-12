@@ -5,7 +5,6 @@ const {
     addEquipment,
     updateEquipment,
     deleteEquipment,
-    getCustomerEquipmentRequests
 } = require('../controllers/equipment');
 
 const Equipment = require('../models/equipment');
@@ -30,6 +29,5 @@ router.route('/:id')
     .delete(protect, deleteEquipment);
 
 // Route to fetch customer's equipment requests
-router.get('/requests/:customerId', getCustomerEquipmentRequests);
 
 module.exports = router;

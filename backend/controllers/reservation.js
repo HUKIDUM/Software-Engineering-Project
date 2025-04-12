@@ -4,6 +4,62 @@ const Equipment = require('../models/equipment');
 const { sendEmail } = require('../utils/sendEmail');
 const User = require('../models/user');
 
+exports.getCustomerEquipmentRequests = async (req, res, next) => {
+    try {
+        const { customerId } = req.params;
+
+        if (!customerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Customer ID is required'
+            });
+        }
+
+        // Find reservations with equipment requests and populate equipment details
+        const reservations = await Reservation.find({
+            user: customerId,
+            'requestedEquipment.0': { $exists: true }
+        }).populate({
+            path: 'requestedEquipment.equipment',
+            model: 'Equipment',
+            select: 'name description quantityAvailable'
+        });
+
+        // Check if any reservations were found
+        if (!reservations || reservations.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'No equipment requests found for this customer'
+            });
+        }
+
+        // Format the response data
+        const formattedRequests = reservations.map(reservation => ({
+            reservationId: reservation._id,
+            date: reservation.date,
+            timeSlot: reservation.timeSlot,
+            equipment: reservation.requestedEquipment.map(eq => ({
+                name: eq.equipment?.name || 'Equipment not found',
+                description: eq.equipment?.description,
+                quantityRequested: eq.quantityRequested
+            }))
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: formattedRequests.length,
+            data: formattedRequests
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching customer equipment requests:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+};
+
 // ✅ Get all reservations (Admin Only)
 exports.getReservations = async (req, res) => {
     try {

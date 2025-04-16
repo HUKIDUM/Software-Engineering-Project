@@ -5,15 +5,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle, FiArchive, FiTool } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle, FiArchive, FiTool, FiPackage, FiMinusCircle, FiPlusCircle } from 'react-icons/fi';
 
-interface Equipment {
+interface Equipment { // Represents the base Equipment definition
   _id: string;
   name: string;
   description?: string;
+  quantityAvailable?: number; // Add quantity available, might be needed from fetch
 }
 
-interface RequestedEquipment {
+interface RequestedEquipment { // Represents an equipment item within a specific reservation request
   _id: string; // Add the ID for the specific request entry
   equipment: Equipment;
   quantityRequested: number;
@@ -43,7 +44,9 @@ const ReservationsPage = () => {
   const [newTimeSlot, setNewTimeSlot] = useState('');
   const [updateError, setUpdateError] = useState('');
   const [isClient, setIsClient] = useState(false);
-  const [editingEquipment, setEditingEquipment] = useState<RequestedEquipment[]>([]);
+  const [editingEquipment, setEditingEquipment] = useState<RequestedEquipment[]>([]); // Equipment currently in the reservation being edited
+  const [availableSpaceEquipment, setAvailableSpaceEquipment] = useState<Equipment[]>([]); // All equipment available at the space
+  const [loadingEquipment, setLoadingEquipment] = useState(false); // Loading state for available equipment
   const router = useRouter();
 
   const timeSlots = [
@@ -96,11 +99,31 @@ const ReservationsPage = () => {
     }
   };
 
-  const handleEdit = (reservation: Reservation) => {
+  // Fetch available equipment for the specific coworking space
+  const fetchAvailableEquipmentForSpace = async (spaceId: string) => {
+    setLoadingEquipment(true);
+    setUpdateError(''); // Clear previous errors
+    try {
+      const response = await api.get(`/coworking-spaces/${spaceId}/equipment`);
+      const equipmentData = response.data.data || [];
+      setAvailableSpaceEquipment(equipmentData);
+    } catch (err) {
+      console.error('Error fetching available equipment:', err);
+      setAvailableSpaceEquipment([]); // Clear equipment on error
+      setUpdateError('Failed to load available equipment for this space.'); // Show error in modal
+    } finally {
+      setLoadingEquipment(false);
+    }
+  };
+
+  const handleEdit = async (reservation: Reservation) => {
     setEditingReservation(reservation);
     setNewDate(reservation.date.split('T')[0]); // Format date for input
     setNewTimeSlot(reservation.timeSlot);
-    setEditingEquipment(reservation.requestedEquipment || []);
+    // Initialize editingEquipment based on the reservation's current state
+    setEditingEquipment(reservation.requestedEquipment ? [...reservation.requestedEquipment] : []);
+    // Fetch all available equipment for the space
+    await fetchAvailableEquipmentForSpace(reservation.coworkingSpace._id);
   };
 
   const handleUpdate = async () => {
@@ -113,13 +136,26 @@ const ReservationsPage = () => {
         timeSlot: newTimeSlot
       });
 
+      // Prepare payload for equipment update - only include items with quantity > 0
+      const equipmentPayload = editingEquipment
+        .filter(eq => eq.quantityRequested > 0)
+        .map(eq => ({
+          equipment: eq.equipment._id, // Send only the equipment ID
+          quantityRequested: eq.quantityRequested,
+          _id: eq._id // Include the specific request entry ID if it exists (for updates/removals)
+        }));
+
       // Update equipment requests
       await api.put(`/reservations/${editingReservation._id}/equipment`, {
-        requestedEquipment: editingEquipment,
+        requestedEquipment: equipmentPayload, // Send the mapped payload
         reservationId: editingReservation._id
       });
 
-      // Update local state
+      // Fetch the updated reservation data to ensure local state is accurate
+      // (Alternatively, manually update local state like before, but fetching is safer)
+      await fetchReservations(); // Re-fetch all reservations to get the latest data
+
+      // Update local state (kept for immediate feedback, but fetchReservations overwrites it)
       setReservations(reservations.map(res =>
         res._id === editingReservation._id
           ? { 
@@ -131,8 +167,9 @@ const ReservationsPage = () => {
           : res
       ));
 
-      setEditingReservation(null);
-      setEditingEquipment([]);
+      setEditingReservation(null); // Close modal
+      setEditingEquipment([]); // Clear editing state
+      setAvailableSpaceEquipment([]); // Clear available equipment state
       setCancelSuccess('Reservation updated successfully');
       setTimeout(() => setCancelSuccess(''), 3000);
     } catch (err) {
@@ -142,14 +179,61 @@ const ReservationsPage = () => {
     }
   };
 
-  const handleEquipmentQuantityChange = (equipmentId: string, newQuantity: number) => {
-    setEditingEquipment(prev => prev.map(eq => 
-      eq.equipment._id === equipmentId 
-        ? { ...eq, quantityRequested: newQuantity }
-        : eq
-    ));
+  // Handles changing quantity for ANY available equipment item in the modal
+  const handleEquipmentQuantityChange = (
+    targetEquipment: Equipment, // The equipment item being changed (from availableSpaceEquipment)
+    newQuantity: number
+  ) => {
+    setEditingEquipment(prev => {
+      const existingIndex = prev.findIndex(item => item.equipment._id === targetEquipment._id);
+      const updatedEquipment = [...prev];
+      const quantity = Math.max(0, Math.min(newQuantity, targetEquipment.quantityAvailable || Infinity)); // Ensure quantity is valid
+
+      if (existingIndex > -1) {
+        // Equipment already in the list
+        const originalQuantity = prev[existingIndex].quantityRequested; // Get original quantity
+
+        if (quantity > 0) {
+          // Update quantity if it's still positive
+          updatedEquipment[existingIndex] = {
+            ...updatedEquipment[existingIndex],
+            quantityRequested: quantity
+          };
+        } else { // quantity is 0
+          // Check if original quantity was > 0 before asking for confirmation
+          if (originalQuantity > 0) {
+            // Use targetEquipment.name for a user-friendly message
+            const confirmed = window.confirm(`Are you sure you want to remove ${targetEquipment.name} from your reservation?`);
+            if (confirmed) {
+              // Remove it from the list only if confirmed
+              updatedEquipment.splice(existingIndex, 1);
+            } else {
+              // If not confirmed, return the original state to prevent the change
+              return prev;
+            }
+          } else {
+            // Original quantity was already 0, just ensure it's removed if somehow still present
+             updatedEquipment.splice(existingIndex, 1); // Keep the removal for consistency
+          }
+        }
+      } else if (quantity > 0) {
+        // Equipment not in the list and quantity > 0, add it
+        // We need a temporary unique ID for the key prop in the map, but the backend uses equipment._id
+        // For the PUT request, we only need equipment._id and quantityRequested.
+        // The existing `_id` on RequestedEquipment is for the *specific request entry*, not the equipment itself.
+        // Let's generate a temporary client-side ID for new items for React keys.
+        updatedEquipment.push({
+          _id: `temp-${targetEquipment._id}-${Date.now()}`, // Temporary ID for React key
+          equipment: targetEquipment,
+          quantityRequested: quantity
+        });
+      }
+      return updatedEquipment;
+    });
   };
 
+  // This function might still be useful for explicitly removing an item via API immediately,
+  // but changing quantity to 0 and updating should also work. Let's keep it for now.
   const handleRemoveEquipment = async (equipmentEntryId: string) => {
     if (!editingReservation) return;
 
@@ -234,29 +318,66 @@ const ReservationsPage = () => {
                   ))}
                 </select>
               </div>
-              <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Equipment</label>
-                {editingEquipment.map((eq) => (
-                  <div key={eq._id} className="flex items-center justify-between space-x-2 mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-700">{eq.equipment.name}</span>
-                      <input
-                        type="number"
-                      min="1"
-                      value={eq.quantityRequested}
-                      onChange={(e) => handleEquipmentQuantityChange(eq.equipment._id, parseInt(e.target.value))}
-                        className="shadow appearance-none border rounded w-20 py-1 px-2 text-gray-700"
-                      />
-                    </div>
-                    <button
-                      onClick={() => handleRemoveEquipment(eq._id)}
-                      className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100"
-                      aria-label={`Remove ${eq.equipment.name}`}
-                    >
-                      <FiX size={16} />
-                    </button>
+              <div className="mb-4 text-left"> {/* Align content left */}
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  <FiPackage className="inline mr-1" /> Equipment
+                </label>
+                {loadingEquipment ? (
+                  <div className="flex justify-center items-center p-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-indigo-500"></div>
                   </div>
-                ))}
+                ) : availableSpaceEquipment.length > 0 ? (
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-2"> {/* Scrollable equipment list */}
+                    {availableSpaceEquipment.map((availEq, index) => { // Added index for potential key issues
+                      const currentRequest = editingEquipment.find(req => req.equipment._id === availEq._id);
+                      const currentQuantity = currentRequest?.quantityRequested || 0;
+                      const maxQuantity = availEq.quantityAvailable ?? Infinity; // Use Infinity if undefined
+
+                      return (
+                        <div key={availEq._id} className="flex justify-between items-center p-2 border rounded-md bg-gray-50">
+                          <div>
+                            <span className="font-medium text-gray-800 text-sm">{availEq.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">(Max: {maxQuantity === Infinity ? 'N/A' : maxQuantity})</span>
+                            {availEq.description && <p className="text-xs text-gray-500 mt-0.5">{availEq.description}</p>}
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleEquipmentQuantityChange(availEq, currentQuantity - 1)}
+                              disabled={currentQuantity === 0}
+                              className="p-1 rounded-full text-gray-500 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`Decrease quantity of ${availEq.name}`}
+                            >
+                              <FiMinusCircle className="h-5 w-5" />
+                            </button>
+                            <span className="w-6 text-center font-medium text-sm">{currentQuantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleEquipmentQuantityChange(availEq, currentQuantity + 1)}
+                              disabled={currentQuantity >= maxQuantity}
+                              className="p-1 rounded-full text-gray-500 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`Increase quantity of ${availEq.name}`}
+                            >
+                              <FiPlusCircle className="h-5 w-5" />
+                            </button>
+                            {/* Optional: Keep explicit remove button if needed, maps to handleRemoveEquipment(currentRequest._id) */}
+                            {/* {currentRequest && (
+                              <button
+                                onClick={() => handleRemoveEquipment(currentRequest._id)}
+                                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 ml-1"
+                                aria-label={`Remove ${availEq.name} completely`}
+                              >
+                                <FiX size={14} />
+                              </button>
+                            )} */}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 italic mt-2">No equipment available at this location.</p>
+                )}
               </div>
               {updateError && (
                 <div className="mb-4 text-red-500 text-sm">{updateError}</div>

@@ -1,5 +1,64 @@
 const Reservation = require('../models/reservation');
 const CoworkingSpace = require('../models/coworkingSpace');
+const Equipment = require('../models/equipment');
+const { sendEmail } = require('../utils/sendEmail');
+const User = require('../models/user');
+
+exports.getCustomerEquipmentRequests = async (req, res, next) => {
+    try {
+        const { customerId } = req.params;
+
+        if (!customerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Customer ID is required'
+            });
+        }
+
+        // Find reservations with equipment requests and populate equipment details
+        const reservations = await Reservation.find({
+            user: customerId,
+            'requestedEquipment.0': { $exists: true }
+        }).populate({
+            path: 'requestedEquipment.equipment',
+            model: 'Equipment',
+            select: 'name description quantityAvailable'
+        });
+
+        // Check if any reservations were found
+        if (!reservations || reservations.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'No equipment requests found for this customer'
+            });
+        }
+
+        // Format the response data
+        const formattedRequests = reservations.map(reservation => ({
+            reservationId: reservation._id,
+            date: reservation.date,
+            timeSlot: reservation.timeSlot,
+            equipment: reservation.requestedEquipment.map(eq => ({
+                name: eq.equipment?.name || 'Equipment not found',
+                description: eq.equipment?.description,
+                quantityRequested: eq.quantityRequested
+            }))
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: formattedRequests.length,
+            data: formattedRequests
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching customer equipment requests:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+};
 
 // ✅ Get all reservations (Admin Only)
 exports.getReservations = async (req, res) => {
@@ -19,7 +78,8 @@ exports.getReservations = async (req, res) => {
 exports.getMyReservations = async (req, res) => {
     try {
         const reservations = await Reservation.find({ user: req.user._id })
-            .populate('coworkingSpace');
+            .populate('coworkingSpace', 'name location')
+            .populate('requestedEquipment.equipment', 'name description');
 
         res.status(200).json({ success: true, count: reservations.length, data: reservations });
     } catch (error) {
@@ -52,43 +112,158 @@ exports.getReservation = async (req, res) => {
 };
 
 // ✅ Create reservation
-exports.createReservation = async (req, res) => {
+exports.createReservation = async (req, res, next) => {
     try {
         req.body.user = req.user._id;
+        const { coworkingSpace: coworkingSpaceId, date, timeSlot, requestedEquipment } = req.body;
 
-        if (!req.body.coworkingSpace || !req.body.date || !req.body.timeSlot) {
+        if (!coworkingSpaceId || !date || !timeSlot) {
             return res.status(400).json({ success: false, error: 'Please provide all required fields: coworkingSpace, date, and timeSlot' });
         }
 
         // Check if coworking space exists
-        const coworkingSpace = await CoworkingSpace.findById(req.body.coworkingSpace);
+        const coworkingSpace = await CoworkingSpace.findById(coworkingSpaceId);
         if (!coworkingSpace) {
             return res.status(404).json({ success: false, error: 'Coworking space not found' });
         }
 
         // Ensure no conflicting reservation exists for the same slot
         const existingReservation = await Reservation.findOne({
-            coworkingSpace: req.body.coworkingSpace,
-            date: req.body.date,
-            timeSlot: req.body.timeSlot
+            coworkingSpace: coworkingSpaceId,
+            date: date,
+            timeSlot: timeSlot,
+            status: 'active' // Only check against active reservations
         });
 
         if (existingReservation) {
             return res.status(400).json({ success: false, error: 'This time slot is already booked' });
         }
 
-        const reservation = await Reservation.create(req.body);
+        // --- Validate Requested Equipment --- 
+        let validatedEquipment = [];
+        let equipmentDetailsForNotification = []; // Store details for email
+        if (requestedEquipment && Array.isArray(requestedEquipment) && requestedEquipment.length > 0) {
+            for (const item of requestedEquipment) {
+                if (!item.equipment || !item.quantityRequested) {
+                    return res.status(400).json({ success: false, error: 'Each requested equipment must have an equipment ID and quantityRequested.' });
+                }
+
+                const equipmentDoc = await Equipment.findById(item.equipment);
+
+                // Check if equipment exists
+                if (!equipmentDoc) {
+                    return res.status(404).json({ success: false, error: `Equipment with ID ${item.equipment} not found.` });
+                }
+
+                // Check if equipment belongs to the same coworking space
+                if (equipmentDoc.coworkingSpace.toString() !== coworkingSpaceId) {
+                    return res.status(400).json({ success: false, error: `Equipment ${equipmentDoc.name} does not belong to this coworking space.` });
+                }
+
+                // Check if quantity is available
+                if (equipmentDoc.quantityAvailable < item.quantityRequested) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: `Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.` 
+                    });
+                }
+
+                validatedEquipment.push({ 
+                    equipment: item.equipment,
+                    quantityRequested: item.quantityRequested 
+                });
+                equipmentDetailsForNotification.push({ // Add details for email
+                    name: equipmentDoc.name,
+                    quantity: item.quantityRequested
+                });
+            }
+        }
+        // --- End Equipment Validation ---
+
+        // Determine initial equipment preparation status
+        const initialEquipmentStatus = validatedEquipment.length > 0 ? 'pending' : 'not_required';
+
+        const reservationData = {
+            user: req.body.user,
+            coworkingSpace: coworkingSpaceId,
+            date: date,
+            timeSlot: timeSlot,
+            requestedEquipment: validatedEquipment,
+            status: 'active',
+            equipmentPreparationStatus: initialEquipmentStatus // Set the status here
+        };
+
+        const reservation = await Reservation.create(reservationData);
+
+        // --- Update Equipment Quantities & Send Notification --- 
+        if (validatedEquipment.length > 0) {
+            // Send notification (existing logic)
+            try {
+                // Find admin users (customize this query as needed)
+                const admins = await User.find({ role: 'admin' }); 
+                const adminEmails = admins.map(admin => admin.email).filter(Boolean);
+                
+                // Add coworking space owner/manager email if available (assuming a field like 'owner' on CoworkingSpace model)
+                // const spaceOwner = await User.findById(coworkingSpace.owner); // Example
+                // if (spaceOwner && spaceOwner.email) adminEmails.push(spaceOwner.email);
+
+                if (adminEmails.length > 0) {
+                    const equipmentListHtml = equipmentDetailsForNotification
+                        .map(eq => `<li>${eq.name} (Quantity: ${eq.quantity})</li>`)
+                        .join('');
+                    
+                    const subject = `New Equipment Request for ${coworkingSpace.name}`;
+                    const message = `
+                        <p>A new reservation has been made with an equipment request:</p>
+                        <ul>
+                            <li>Space: ${coworkingSpace.name}</li>
+                            <li>Date: ${new Date(date).toLocaleDateString()}</li>
+                            <li>Time Slot: ${timeSlot}</li>
+                            <li>User: ${req.user.name} (${req.user.email})</li>
+                        </ul>
+                        <p><strong>Requested Equipment:</strong></p>
+                        <ul>
+                            ${equipmentListHtml}
+                        </ul>
+                        <p>Please prepare the equipment.</p>
+                    `;
+
+                    await sendEmail({
+                        to: adminEmails.join(','), // Send to all admins
+                        subject: subject,
+                        html: message
+                    });
+                    console.log('Notification email sent to admins for equipment request.');
+                }
+            } catch (emailError) {
+                console.error('Error sending equipment request notification email:', emailError);
+                // Decide if this should block the response or just log the error
+                // Potentially add to a background job queue for retries
+            }
+        }
+        // --- End Update Quantities & Notification ---
 
         res.status(201).json({
             success: true,
             data: reservation
         });
+
     } catch (error) {
         console.error("❌ Error creating reservation:", error);
-        res.status(400).json({ success: false, error: error.message });
+        // If it's a validation error from the schema (e.g., quantity < 1)
+        if (error.name === 'ValidationError') {
+             return res.status(400).json({ success: false, error: error.message });
+        }
+        // Handle potential pre-save hook error (max reservations)
+        if (error.message && error.message.includes('User cannot have more than 3 active reservations')) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        // Use next for unhandled errors to trigger central error handler if exists
+        next(error); 
+        // Or fallback to generic 500 if no central handler
+        // res.status(500).json({ success: false, error: 'Internal Server Error' });
     }
 };
-
 
 // ✅ Update reservation
 exports.updateReservation = async (req, res) => {
@@ -124,7 +299,6 @@ exports.updateReservation = async (req, res) => {
         res.status(400).json({ success: false, error: error.message });
     }
 };
-
 
 // ✅ Delete reservation
 exports.deleteReservation = async (req, res) => {
@@ -179,8 +353,6 @@ exports.getBookedSlots = async (req, res) => {
     }
 };
 
-
-
 exports.cancelReservation = async (req, res) => {
     try {
         let reservation = await Reservation.findById(req.params.id);
@@ -212,7 +384,6 @@ exports.cancelReservation = async (req, res) => {
         res.status(500).json({ success: false, error: error.message || "Internal Server Error" });
     }
 };
-
 
 exports.createCoworkingSpace = async (req, res) => {
     try {

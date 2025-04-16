@@ -1,13 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { FiSave, FiX, FiMapPin, FiUsers, FiMap } from 'react-icons/fi';
+import { FiSave, FiX, FiMapPin, FiUsers, FiMap, FiPlus, FiTrash2 } from 'react-icons/fi';
 import Link from 'next/link';
 import Map from '@/components/Map';
 import { getAddressFromCoordinates } from '@/lib/googleMaps';
+
+// Interface for initial equipment item state
+interface InitialEquipmentItem {
+  id: number; // Temporary ID for client-side management
+  name: string;
+  description: string;
+  quantityAvailable: number | string;
+}
 
 const CreateCoworkingSpacePage = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -17,13 +25,17 @@ const CreateCoworkingSpacePage = () => {
     location: '',
     availableSeats: 10,
     coordinates: {
-      type: 'Point',
+      type: 'Point' as const, // Use const assertion for literal type
       coordinates: [100.5018, 13.7563] // Default to Bangkok: longitude, latitude
     }
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMap, setShowMap] = useState(false);
+
+  // State for initial equipment
+  const [initialEquipment, setInitialEquipment] = useState<InitialEquipmentItem[]>([]);
+  const [nextEquipId, setNextEquipId] = useState(1); // Counter for temporary IDs
 
   useEffect(() => {
     if (!isLoading) {
@@ -39,7 +51,7 @@ const CreateCoworkingSpacePage = () => {
     }
   }, [isAuthenticated, isLoading, user, router]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     
     if (name === 'longitude' || name === 'latitude') {
@@ -112,21 +124,64 @@ const CreateCoworkingSpacePage = () => {
     setShowMap(!showMap);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // --- Initial Equipment Handlers ---
+  const addEquipmentRow = () => {
+    setInitialEquipment(prev => [
+      ...prev,
+      { id: nextEquipId, name: '', description: '', quantityAvailable: 1 }
+    ]);
+    setNextEquipId(prev => prev + 1);
+  };
+
+  const handleEquipmentChange = (index: number, field: keyof Omit<InitialEquipmentItem, 'id'>, value: string | number) => {
+    setInitialEquipment(prev => 
+      prev.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const removeEquipmentRow = (idToRemove: number) => {
+    setInitialEquipment(prev => prev.filter(item => item.id !== idToRemove));
+  };
+  // --- End Initial Equipment Handlers ---
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsSubmitting(true);
+    
+    // Validate equipment before submitting
+    const validEquipment = initialEquipment
+        .filter(eq => eq.name.trim() !== '') // Ensure name is not empty
+        .map(eq => ({
+            name: eq.name.trim(),
+            description: eq.description.trim(),
+            quantityAvailable: parseInt(String(eq.quantityAvailable), 10) || 0
+        }))
+        .filter(eq => eq.quantityAvailable >= 0); // Ensure quantity is valid
+        
+    // Check if any equipment was entered but invalid (optional, could show specific errors)
+    if (initialEquipment.some(eq => eq.name.trim() !== '' && (isNaN(parseInt(String(eq.quantityAvailable), 10)) || parseInt(String(eq.quantityAvailable), 10) < 0)))
+    {
+        setError('Please ensure all entered equipment has a valid non-negative quantity.');
+        return;
+    }
 
+    setIsSubmitting(true);
     try {
-      await api.post('/coworking-spaces', formData);
-      router.push('/admin');
-    } catch (err: Error | unknown) {
+      const payload = {
+          ...formData,
+          // Only include equipment if there are valid entries
+          ...(validEquipment.length > 0 && { initialEquipment: validEquipment })
+      };
+      await api.post('/coworking-spaces', payload);
+      router.push('/admin'); // Redirect to admin dashboard on success
+    } catch (err: any) {
       console.error('Error creating coworking space:', err);
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'Failed to create coworking space. Please try again.';
-      setError(errorMessage);
-      setIsSubmitting(false);
+      const message = err.response?.data?.error || 'Failed to create coworking space. Please try again.';
+      setError(message);
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -309,6 +364,82 @@ const CreateCoworkingSpacePage = () => {
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Initial Equipment Section */}
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                 <div className="px-4 py-5 sm:p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-medium text-gray-900">Initial Equipment (Optional)</h2>
+                        <button
+                            type="button"
+                            onClick={addEquipmentRow}
+                            className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        >
+                            <FiPlus className="-ml-1 mr-1 h-4 w-4" />
+                            Add Equipment
+                        </button>
+                    </div>
+                    
+                    {initialEquipment.length > 0 && (
+                        <div className="space-y-4">
+                            {initialEquipment.map((item, index) => (
+                                <div key={item.id} className="grid grid-cols-12 gap-4 items-center border-b pb-3 last:border-b-0">
+                                    {/* Name Input */} 
+                                    <div className="col-span-12 sm:col-span-4">
+                                        <label htmlFor={`equipName-${item.id}`} className="block text-sm font-medium text-gray-700">Name</label>
+                                        <input 
+                                            type="text" 
+                                            id={`equipName-${item.id}`} 
+                                            value={item.name}
+                                            onChange={(e) => handleEquipmentChange(index, 'name', e.target.value)}
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                            placeholder="e.g., Projector"
+                                        />
+                                    </div>
+                                    {/* Description Input */} 
+                                    <div className="col-span-12 sm:col-span-4">
+                                        <label htmlFor={`equipDesc-${item.id}`} className="block text-sm font-medium text-gray-700">Description</label>
+                                        <input 
+                                            type="text" 
+                                            id={`equipDesc-${item.id}`} 
+                                            value={item.description}
+                                            onChange={(e) => handleEquipmentChange(index, 'description', e.target.value)}
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                            placeholder="Optional"
+                                        />
+                                    </div>
+                                    {/* Quantity Input */} 
+                                    <div className="col-span-6 sm:col-span-2">
+                                        <label htmlFor={`equipQty-${item.id}`} className="block text-sm font-medium text-gray-700">Quantity</label>
+                                        <input 
+                                            type="number" 
+                                            id={`equipQty-${item.id}`} 
+                                            min="0"
+                                            value={item.quantityAvailable}
+                                            onChange={(e) => handleEquipmentChange(index, 'quantityAvailable', e.target.value)}
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                        />
+                                    </div>
+                                    {/* Remove Button */} 
+                                    <div className="col-span-6 sm:col-span-2 flex items-end justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => removeEquipmentRow(item.id)}
+                                            className="p-1 text-red-500 hover:text-red-700"
+                                            title="Remove Equipment"
+                                        >
+                                            <FiTrash2 className="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {initialEquipment.length === 0 && (
+                        <p className="text-sm text-gray-500">No initial equipment added yet.</p>
+                    )}
+                 </div>
               </div>
 
               <div className="mt-6">

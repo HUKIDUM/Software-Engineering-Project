@@ -1,4 +1,5 @@
 const CoworkingSpace = require('../models/coworkingSpace');
+const Equipment = require('../models/equipment'); // Import Equipment model
 
 
 // @desc    Get all coworking spaces
@@ -51,16 +52,48 @@ exports.getCoworkingSpace = async (req, res, next) => {
 // @access  Private/Admin
 exports.createCoworkingSpace = async (req, res, next) => {
     try {
-        const coworkingSpace = await CoworkingSpace.create(req.body);
+        // Separate initialEquipment from the rest of the body
+        const { initialEquipment, ...spaceData } = req.body;
+
+        // Create the coworking space first
+        const coworkingSpace = await CoworkingSpace.create(spaceData);
+
+        // If initial equipment is provided, create those documents
+        if (initialEquipment && Array.isArray(initialEquipment) && initialEquipment.length > 0) {
+            // Add the coworkingSpace ID to each piece of equipment
+            const equipmentToCreate = initialEquipment.map(equip => ({
+                ...equip, // Spread the equipment data (name, description, quantityAvailable)
+                coworkingSpace: coworkingSpace._id // Link to the newly created space
+            }));
+
+            try {
+                // Use insertMany for efficiency
+                await Equipment.insertMany(equipmentToCreate);
+                console.log(`Successfully created ${equipmentToCreate.length} initial equipment items for space ${coworkingSpace.name}`);
+            } catch (equipmentError) {
+                console.error(`Error creating initial equipment for space ${coworkingSpace._id}:`, equipmentError);
+                // Decide on error handling: 
+                // 1. Just log it (as done here) - space exists, but equipment might be missing.
+                // 2. Attempt to delete the created coworkingSpace for atomicity (more complex).
+                // 3. Return a specific error/warning in the response.
+            }
+        }
+
+        // Return success response with the created coworking space data
         res.status(201).json({
             success: true,
             data: coworkingSpace
         });
+
     } catch (error) {
+        // Handle errors from CoworkingSpace.create or other unexpected issues
+        console.error("Error creating coworking space:", error);
+        // Pass to error handling middleware if available, or send specific response
         res.status(400).json({
             success: false,
-            error: error.message
+            error: error.message || 'Failed to create coworking space'
         });
+        // next(error); // Alternative using error middleware
     }
 };
 

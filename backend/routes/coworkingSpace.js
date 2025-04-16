@@ -11,6 +11,11 @@ const {
     getNearestCoworkingSpaces
 } = require('../controllers/coworkingSpace');
 
+// Import other resource routers
+const equipmentRouter = require('./equipment'); // Import equipment router
+
+// Re-route into other resource routers
+router.use('/:coworkingSpaceId/equipment', equipmentRouter); // Mount equipment router for nested route
 
 router.get('/nearest', getNearestCoworkingSpaces);  // No protection for now
 
@@ -25,9 +30,6 @@ router.route('/:id')
     .put(protect, authorize('admin'), updateCoworkingSpace)  // Only admin can update
     .delete(protect, authorize('admin'), deleteCoworkingSpace);  // Only admin can delete
 
-
-
-
 // // Debugging: Log before calling getNearestCoworkingSpaces
 // router.get('/nearest', (req, res, next) => {
 //     console.log("Nearest Coworking Space Route Reached");  // Log to confirm route is hit
@@ -36,6 +38,5 @@ router.route('/:id')
 
 // Route for nearest coworking spaces (GET)
 router.get('/nearest', getNearestCoworkingSpaces);  // This route should be defined here
-
 
 module.exports = router;

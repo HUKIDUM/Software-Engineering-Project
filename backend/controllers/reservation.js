@@ -331,9 +331,31 @@ exports.deleteReservation = async (req, res) => {
         }
 
         // Allow deletion if user owns the reservation or is admin
-        if (reservation.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+        const userId = reservation.user;
+        if (userId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
             return res.status(403).json({ success: false, error: 'Not authorized' });
         }
+
+        // --- Deduct Reward Points ---
+        try {
+            const user = await User.findById(userId);
+            if (user && user.membership) {
+                const currentPoints = user.membership.points || 0;
+                const newPoints = Math.max(0, currentPoints - 10); // Ensure points don't go below 0
+                user.membership.points = newPoints;
+                await user.save();
+                console.log(`✨ Deducted up to 10 reward points from user ${user.email} upon reservation deletion. New balance: ${user.membership.points}`);
+            } else if (user) {
+                console.warn(`User ${userId} found, but has no membership object. Cannot deduct points.`);
+            } else {
+                // This case should ideally not happen if the reservation had a valid user ref
+                console.error(`❌ Could not find user ${userId} associated with the reservation to deduct points.`);
+            }
+        } catch (pointError) {
+            console.error(`❌ Error updating reward points for user ${userId} during reservation deletion:`, pointError);
+            // Decide if this should block the deletion. For now, we'll proceed with deletion.
+        }
+        // --- End Deduct Reward Points ---
 
         await Reservation.findByIdAndDelete(req.params.id);
 

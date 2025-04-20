@@ -21,8 +21,9 @@ interface CoworkingSpace {
 }
 
 const EditCoworkingSpacePage = ({ params }: { params: { id: string } }) => {
-  // Access params directly
-  const spaceId = params.id;
+  // Unwrap params using React.use()
+  const resolvedParams = React.use(params);
+  const spaceId = resolvedParams.id;
   
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();

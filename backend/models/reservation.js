@@ -4,30 +4,38 @@ const ReservationSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     coworkingSpace: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'CoworkingSpace',
-        required: true
+        required: true,
     },
     date: {
         type: Date,
-        required: [true, 'Please add a date for the reservation']
+        required: true,
     },
     timeSlot: {
-        type: String, // ✅ Added timeSlot
-        required: [true, 'Please add a time slot for the reservation']
+        type: String,
+        required: true,
     },
     status: {
         type: String,
         enum: ['active', 'cancelled'],
-        default: 'active'
+        default: 'active',
     },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
+    requestedEquipment: [
+        {
+            equipment: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Equipment',
+            },
+            quantityRequested: {
+                type: Number,
+                required: true,
+            },
+        },
+    ],
 });
 
 // ✅ Prevent user from submitting more than 3 active reservations

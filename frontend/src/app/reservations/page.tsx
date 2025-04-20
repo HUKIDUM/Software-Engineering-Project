@@ -5,7 +5,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiClock, FiX, FiCheckCircle, FiAlertCircle, FiArchive, FiTool } from 'react-icons/fi';
+
+interface Equipment {
+  _id: string;
+  name: string;
+  description?: string;
+}
+
+interface RequestedEquipment {
+  equipment: Equipment;
+  quantityRequested: number;
+}
 
 interface Reservation {
   _id: string;
@@ -17,6 +28,7 @@ interface Reservation {
   date: string;
   timeSlot: string;
   status: string;
+  requestedEquipment?: RequestedEquipment[];
 }
 
 const ReservationsPage = () => {
@@ -29,6 +41,7 @@ const ReservationsPage = () => {
   const [newDate, setNewDate] = useState('');
   const [newTimeSlot, setNewTimeSlot] = useState('');
   const [updateError, setUpdateError] = useState('');
+  const [isClient, setIsClient] = useState(false);
   const router = useRouter();
 
   const timeSlots = [
@@ -48,6 +61,10 @@ const ReservationsPage = () => {
       fetchReservations();
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const fetchReservations = async () => {
     try {
@@ -122,16 +139,17 @@ const ReservationsPage = () => {
   const isUpcoming = (dateString: string, timeSlot: string) => {
     const now = new Date();
     const date = new Date(dateString);
-    date.setHours(0, 0, 0, 0);
-    
-    if (date < now) return false;
-    if (date > now) return true;
-    
-    // Check if time slot is in the future today
+    const reservationDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (reservationDateOnly < nowDateOnly) return false;
+    if (reservationDateOnly > nowDateOnly) return true;
+
     const currentHour = now.getHours();
-    const slotEndHour = parseInt(timeSlot.split(' - ')[1].split(':')[0]);
-    
-    return currentHour < slotEndHour;
+    const slotEndTimeParts = timeSlot.split(' - ')[1]?.split(':');
+    const slotEndHour = slotEndTimeParts ? parseInt(slotEndTimeParts[0], 10) : 24;
+
+    return !isNaN(slotEndHour) && currentHour < slotEndHour;
   };
 
   if (isLoading || loading) {
@@ -249,9 +267,15 @@ const ReservationsPage = () => {
             <div className="bg-white shadow overflow-hidden sm:rounded-lg">
               <ul className="divide-y divide-gray-200">
                 {reservations.map((reservation) => {
-                  const isActive = reservation.status === 'active';
-                  const isPast = !isUpcoming(reservation.date, reservation.timeSlot);
-                  
+                  // Calculate isPast only on the client
+                  const isPast = isClient ? !isUpcoming(reservation.date, reservation.timeSlot) : false;
+                  const isDone = reservation.status === 'done';
+                  const isCancelled = reservation.status === 'cancelled';
+                  const isActive = reservation.status === 'active'; // Explicitly check for active
+
+                  // Determine if actions should be allowed based on client-side check
+                  const allowActions = isClient && isActive && !isPast;
+
                   return (
                     <li key={reservation._id} className="px-4 py-4 sm:px-6">
                       <div className="flex items-center justify-between">
@@ -275,31 +299,57 @@ const ReservationsPage = () => {
                               <FiClock className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                               <p>{reservation.timeSlot}</p>
                             </div>
+                            {/* Equipment Section */}
+                            {reservation.requestedEquipment && reservation.requestedEquipment.length > 0 && (
+                              <div className="mt-1 flex items-start text-sm text-gray-500">
+                                <FiTool className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400 mt-0.5" />
+                                <div>
+                                  <p className="font-medium">Equipment:</p>
+                                  <ul className="mt-1 ml-4 space-y-1">
+                                    {reservation.requestedEquipment.map((item, index) => (
+                                      <li key={index} className="flex items-center">
+                                        <span className="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
+                                        {item.equipment.name}
+                                        <span className="ml-1 text-gray-400">
+                                          ({item.quantityRequested} {item.quantityRequested === 1 ? 'unit' : 'units'})
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end space-y-2">
-                          <div className={`flex items-center ${isActive ? 'text-green-500' : 'text-red-500'}`}>
-                            {isActive ? (
-                              <>
-                                <FiCheckCircle className="h-5 w-5 mr-1" />
-                                <span className="text-sm font-medium">Active</span>
-                              </>
-                            ) : (
-                              <>
-                                <FiX className="h-5 w-5 mr-1" />
-                                <span className="text-sm font-medium">Cancelled</span>
-                              </>
+                          {/* Status Indicator */}
+                          <div className={`flex items-center text-sm font-medium 
+                            ${isActive && !isPast ? 'text-green-600' : ''}
+                            ${isCancelled ? 'text-red-600' : ''}
+                            ${isDone || (isActive && isPast) ? 'text-gray-500' : ''} // Show gray for done or active-but-past
+                          `}>
+                            {isActive && !isPast && (
+                              <><FiCheckCircle className="h-5 w-5 mr-1" /> Active</>
+                            )}
+                            {isCancelled && (
+                              <><FiX className="h-5 w-5 mr-1" /> Cancelled</>
+                            )}
+                            {(isDone || (isActive && isPast)) && (
+                              <><FiArchive className="h-5 w-5 mr-1" /> Done</> // Use Done for both cases
                             )}
                           </div>
                           
-                          {isActive && !isPast && (
+                          {/* Action Buttons - Show only if client ready, active, and not past */}
+                          {allowActions && (
                             <div className="space-x-2">
+                              {/* Edit Button */}
                               <button
                                 onClick={() => handleEdit(reservation)}
                                 className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
                               >
                                 Edit
                               </button>
+                              {/* Cancel Button */}
                               <button
                                 onClick={() => cancelReservation(reservation._id)}
                                 className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200"
@@ -309,9 +359,11 @@ const ReservationsPage = () => {
                             </div>
                           )}
                           
-                          {isPast && isActive && (
+                          {/* Optional: Explicitly show 'Past' text if needed, though 'Done' covers it visually */}
+                          {/* {isClient && isPast && isActive && (
                             <span className="text-xs text-gray-500">Past reservation</span>
-                          )}
+                          )} */}
+
                         </div>
                       </div>
                     </li>

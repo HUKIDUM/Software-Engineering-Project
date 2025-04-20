@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function MembershipPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading} = useAuth(); // if available
   const router = useRouter();
   const [isActivating, setIsActivating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -18,22 +18,16 @@ export default function MembershipPage() {
 
   const handleActivate = async () => {
     if (!user) return;
+    setIsActivating(true);
+    setErrorMessage(null);
+
     try {
-      setIsActivating(true);
-      setErrorMessage(null);
-
-      // Get token from localStorage (or from your AuthContext if stored there)
       const token = localStorage.getItem('token');
-      if (!token) {
-        setErrorMessage('Authorization token missing. Please log in again.');
-        return;
-      }
-
       const res = await fetch('http://localhost:5003/api/v1/auth/membership', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           type: 'premium',
@@ -41,30 +35,15 @@ export default function MembershipPage() {
         })
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('Error response:', text);
-        if (text.includes("<!DOCTYPE html>")) {
-          setErrorMessage('The server returned an error page (HTML). Please try again later.');
-        } else {
-          setErrorMessage('The server returned an error response.');
-        }
-        return;
-      }
+      if (!res.ok) throw new Error(await res.text());
 
-      const contentType = res.headers.get('Content-Type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        alert('Membership activated!');
-        router.push('/profile');
-      } else {
-        const text = await res.text();
-        console.error('Unexpected response:', text);
-        setErrorMessage('The server returned an unexpected response (not JSON).');
-      }
-    } catch (error) {
-      console.error('Activation error:', error);
-      setErrorMessage('Something went wrong.');
+      
+
+      alert('Membership activated!');
+      router.push('/profile');
+    } catch (err) {
+      console.error(err);
+      setErrorMessage('Activation failed. Please try again.');
     } finally {
       setIsActivating(false);
     }
@@ -91,7 +70,6 @@ export default function MembershipPage() {
         </p>
       </div>
 
-      {/* Show error message if there's any */}
       {errorMessage && (
         <div className="mb-6 text-red-600">
           <p>{errorMessage}</p>

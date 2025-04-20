@@ -17,7 +17,7 @@ export default function ProfilePage() {
   // Redirect if not logged in
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login');
+      router.push('/');
     }
   }, [isLoading, user, router]);
 

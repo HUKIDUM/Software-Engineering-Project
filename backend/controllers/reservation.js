@@ -22,7 +22,8 @@ exports.getReservations = async (req, res) => {
 exports.getMyReservations = async (req, res) => {
     try {
         const reservations = await Reservation.find({ user: req.user._id })
-            .populate('coworkingSpace');
+            .populate('coworkingSpace', 'name location')
+            .populate('requestedEquipment.equipment', 'name description');
 
         res.status(200).json({ success: true, count: reservations.length, data: reservations });
     } catch (error) {

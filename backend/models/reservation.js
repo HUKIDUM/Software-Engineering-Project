@@ -4,48 +4,38 @@ const ReservationSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     coworkingSpace: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'CoworkingSpace',
-        required: true
+        required: true,
     },
     date: {
         type: Date,
-        required: [true, 'Please add a date for the reservation']
+        required: true,
     },
     timeSlot: {
-        type: String, // ✅ Added timeSlot
-        required: [true, 'Please add a time slot for the reservation']
+        type: String,
+        required: true,
     },
-    requestedEquipment: [{
-        equipment: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Equipment',
-            required: true
-        },
-        quantityRequested: {
-            type: Number,
-            required: true,
-            min: [1, 'Quantity requested must be at least 1']
-        }
-    }],
     status: {
         type: String,
-        enum: ['active', 'cancelled', 'done'],
-        default: 'active'
+        enum: ['active', 'cancelled'],
+        default: 'active',
     },
-    equipmentPreparationStatus: {
-        type: String,
-        enum: ['pending', 'prepared', 'not_required'],
-        // Default will be set in the controller based on whether equipment is requested
-        // default: 'not_required' 
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
+    requestedEquipment: [
+        {
+            equipment: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Equipment',
+            },
+            quantityRequested: {
+                type: Number,
+                required: true,
+            },
+        },
+    ],
 });
 
 // ✅ Prevent user from submitting more than 3 active reservations

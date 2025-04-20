@@ -42,6 +42,7 @@ const ReservationsPage = () => {
   const [newTimeSlot, setNewTimeSlot] = useState('');
   const [updateError, setUpdateError] = useState('');
   const [isClient, setIsClient] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<RequestedEquipment[]>([]);
   const router = useRouter();
 
   const timeSlots = [
@@ -98,25 +99,39 @@ const ReservationsPage = () => {
     setEditingReservation(reservation);
     setNewDate(reservation.date.split('T')[0]); // Format date for input
     setNewTimeSlot(reservation.timeSlot);
+    setEditingEquipment(reservation.requestedEquipment || []);
   };
 
   const handleUpdate = async () => {
     if (!editingReservation) return;
 
     try {
+      // Update basic reservation details
       await api.put(`/reservations/${editingReservation._id}`, {
         date: newDate,
         timeSlot: newTimeSlot
       });
 
+      // Update equipment requests
+      await api.put(`/reservations/${editingReservation._id}/equipment`, {
+        requestedEquipment: editingEquipment,
+        reservationId: editingReservation._id
+      });
+
       // Update local state
       setReservations(reservations.map(res =>
         res._id === editingReservation._id
-          ? { ...res, date: newDate, timeSlot: newTimeSlot }
+          ? { 
+              ...res, 
+              date: newDate, 
+              timeSlot: newTimeSlot,
+              requestedEquipment: editingEquipment 
+            }
           : res
       ));
 
       setEditingReservation(null);
+      setEditingEquipment([]);
       setCancelSuccess('Reservation updated successfully');
       setTimeout(() => setCancelSuccess(''), 3000);
     } catch (err) {
@@ -124,6 +139,14 @@ const ReservationsPage = () => {
       setUpdateError('Failed to update reservation. Please try again.');
       setTimeout(() => setUpdateError(''), 3000);
     }
+  };
+
+  const handleEquipmentQuantityChange = (equipmentId: string, newQuantity: number) => {
+    setEditingEquipment(prev => prev.map(eq => 
+      eq.equipment._id === equipmentId 
+        ? { ...eq, quantityRequested: newQuantity }
+        : eq
+    ));
   };
 
   const formatDate = (dateString: string) => {
@@ -187,6 +210,21 @@ const ReservationsPage = () => {
                     <option key={slot} value={slot}>{slot}</option>
                   ))}
                 </select>
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">Equipment</label>
+                {editingEquipment.map((eq) => (
+                  <div key={eq.equipment._id} className="flex items-center space-x-2 mb-2">
+                    <span className="text-sm text-gray-700">{eq.equipment.name}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={eq.quantityRequested}
+                      onChange={(e) => handleEquipmentQuantityChange(eq.equipment._id, parseInt(e.target.value))}
+                      className="shadow appearance-none border rounded w-20 py-1 px-2 text-gray-700"
+                    />
+                  </div>
+                ))}
               </div>
               {updateError && (
                 <div className="mb-4 text-red-500 text-sm">{updateError}</div>

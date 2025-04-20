@@ -10,7 +10,8 @@ const {
     updateReservation,
     deleteReservation,
     getBookedSlots,
-    getCustomerEquipmentRequests
+    getCustomerEquipmentRequests,
+    updateRequestedEquipment // ✅ อย่าลืม import ฟังก์ชันนี้
 } = require('../controllers/reservation');
 
 // Admin can get all reservations
@@ -24,10 +25,15 @@ router.get('/my', protect, getMyReservations);
 // Get booked slots for a coworking space
 router.get('/booked/:coworkingSpace/:date', protect, getBookedSlots);
 
+// ✅ PUT route สำหรับอัปเดต requested equipment
+router.put('/:id/requested-equipment', protect, updateRequestedEquipment);
+
 // Both users and admins can get, update, and delete reservations
 router.route('/:id')
     .get(protect, getReservation)
     .put(protect, updateReservation)
     .delete(protect, deleteReservation);
 
+router.route('/:reservationId/equipment')
+    .put(protect, updateRequestedEquipment);
 module.exports = router;

@@ -108,3 +108,57 @@ exports.logout = (req, res) => {
         res.status(500).json({ success: false, data: null, error: 'Server Error' });
     }
 };
+
+
+
+/////////// membership
+// @route  POST /api/v1/auth/membership
+// @access Private
+exports.setMembership = async (req, res) => {
+    try {
+        const { type, status, startDate, endDate } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        user.membership = {
+            type: type || 'basic',
+            status: status || 'active',
+            startDate: startDate || new Date(),
+            endDate: endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // +30 days
+        };
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Membership updated',
+            data: user.membership
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// @route  GET /api/v1/auth/membership
+// @access Private
+exports.getMembership = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user.membership
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};

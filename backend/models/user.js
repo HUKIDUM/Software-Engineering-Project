@@ -33,6 +33,24 @@ const userSchema = new mongoose.Schema({
     default: 'user',
     required: true
   },
+  membership: {
+    type: {
+      type: String,
+      enum: ['none', 'basic', 'premium'],
+      default: 'none'
+    },
+    status: {
+      type: String,
+      enum: ['inactive', 'active', 'cancelled'],
+      default: 'inactive'
+    },
+    startDate: {
+      type: Date
+    },
+    endDate: {
+      type: Date
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -41,16 +59,16 @@ const userSchema = new mongoose.Schema({
 
 // ✅ Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next(); // ✅ Prevents unnecessary hashing
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next(); // ✅ Ensures middleware completes properly
+  next();
 });
 
 // ✅ Sign JWT and return
 userSchema.methods.getSignedJwtToken = function() {
   return jwt.sign({ userId: this._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '30d' // ✅ Uses 30 days if `JWT_EXPIRE` is missing
+    expiresIn: process.env.JWT_EXPIRE || '30d'
   });
 };
 

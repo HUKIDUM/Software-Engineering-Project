@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const {xss} = require('express-xss-sanitizer');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
+const cron = require('node-cron');
+const { updatePastReservations } = require('./utils/schedulerTasks');
 
 // Load environment variables
 require('dotenv').config();
@@ -16,6 +18,7 @@ const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGODB_URI, {
             useNewUrlParser: true,
+            
             useUnifiedTopology: true,
         });
         console.log("✅ MongoDB Connected Successfully!");
@@ -59,16 +62,24 @@ app.use(limiter);
 // Import Routes
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservation');
-
+const coworkingSpaceRoutes = require('./routes/coworkingSpace');
+const equipmentRoutes = require('./routes/equipment');
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/reservations', reservationRoutes);
+app.use('/api/v1/coworking-spaces', coworkingSpaceRoutes);
+app.use('/api/v1/equipment', equipmentRoutes);
 
-const coworkingSpaceRoutes = require('./routes/coworkingSpace');
-app.use('/api/v1/coworking-spaces', coworkingSpaceRoutes);  // Mounting the coworking space routes
-
-
+// Schedule Tasks
+// Runs every hour at the beginning of the hour (e.g., 1:00, 2:00)
+console.log('[Scheduler] Scheduling updatePastReservations task...');
+cron.schedule('0 * * * *', () => {
+  console.log('[Scheduler] Triggering scheduled task: updatePastReservations');
+  updatePastReservations().catch(err => {
+    console.error('[Scheduler] Error during scheduled execution of updatePastReservations:', err);
+  });
+});
 
 // Test Routes to check server functionality
 app.get('/', (req, res) => {

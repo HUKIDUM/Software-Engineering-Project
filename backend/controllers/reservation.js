@@ -163,15 +163,15 @@ exports.createReservation = async (req, res, next) => {
 
                 // Check if quantity is available
                 if (equipmentDoc.quantityAvailable < item.quantityRequested) {
-                    return res.status(400).json({ 
-                        success: false, 
-                        error: `Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.` 
+                    return res.status(400).json({
+                        success: false,
+                        error: `Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.`
                     });
                 }
 
-                validatedEquipment.push({ 
+                validatedEquipment.push({
                     equipment: item.equipment,
-                    quantityRequested: item.quantityRequested 
+                    quantityRequested: item.quantityRequested
                 });
                 equipmentDetailsForNotification.push({ // Add details for email
                     name: equipmentDoc.name,
@@ -196,14 +196,34 @@ exports.createReservation = async (req, res, next) => {
 
         const reservation = await Reservation.create(reservationData);
 
+        // --- Add Reward Points ---
+        try {
+            // Find the user who made the reservation
+            const user = await User.findById(req.user._id);
+            if (user && user.membership) {
+                // Add 10 points
+                user.membership.points = (user.membership.points || 0) + 10;
+                await user.save(); // Save the updated user document
+                console.log(`✨ Added 10 reward points to user ${user.email}. New balance: ${user.membership.points}`);
+            } else if (user) {
+                console.warn(`User ${req.user._id} found, but has no membership object. Cannot add points.`);
+            } else {
+                console.error(`❌ Could not find user ${req.user._id} to add reward points.`);
+            }
+        } catch (pointError) {
+            console.error(`❌ Error adding reward points for user ${req.user._id}:`, pointError);
+            // Continue the process even if adding points fails, just log the error
+        }
+        // --- End Add Reward Points ---
+
         // --- Update Equipment Quantities & Send Notification --- 
         if (validatedEquipment.length > 0) {
             // Send notification (existing logic)
             try {
                 // Find admin users (customize this query as needed)
-                const admins = await User.find({ role: 'admin' }); 
+                const admins = await User.find({ role: 'admin' });
                 const adminEmails = admins.map(admin => admin.email).filter(Boolean);
-                
+
                 // Add coworking space owner/manager email if available (assuming a field like 'owner' on CoworkingSpace model)
                 // const spaceOwner = await User.findById(coworkingSpace.owner); // Example
                 // if (spaceOwner && spaceOwner.email) adminEmails.push(spaceOwner.email);
@@ -212,7 +232,7 @@ exports.createReservation = async (req, res, next) => {
                     const equipmentListHtml = equipmentDetailsForNotification
                         .map(eq => `<li>${eq.name} (Quantity: ${eq.quantity})</li>`)
                         .join('');
-                    
+
                     const subject = `New Equipment Request for ${coworkingSpace.name}`;
                     const message = `
                         <p>A new reservation has been made with an equipment request:</p>
@@ -253,14 +273,14 @@ exports.createReservation = async (req, res, next) => {
         console.error("❌ Error creating reservation:", error);
         // If it's a validation error from the schema (e.g., quantity < 1)
         if (error.name === 'ValidationError') {
-             return res.status(400).json({ success: false, error: error.message });
+            return res.status(400).json({ success: false, error: error.message });
         }
         // Handle potential pre-save hook error (max reservations)
         if (error.message && error.message.includes('User cannot have more than 3 active reservations')) {
             return res.status(400).json({ success: false, error: error.message });
         }
         // Use next for unhandled errors to trigger central error handler if exists
-        next(error); 
+        next(error);
         // Or fallback to generic 500 if no central handler
         // res.status(500).json({ success: false, error: 'Internal Server Error' });
     }
@@ -391,18 +411,18 @@ exports.createCoworkingSpace = async (req, res) => {
         const { name, address, telephoneNumber, openTime, closeTime, coordinates } = req.body;
 
         if (!name || !address || !telephoneNumber || !openTime || !closeTime || !coordinates) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Please provide all required fields: name, address, telephoneNumber, openTime, closeTime, coordinates.' 
+            return res.status(400).json({
+                success: false,
+                error: 'Please provide all required fields: name, address, telephoneNumber, openTime, closeTime, coordinates.'
             });
         }
 
         // Validate coordinates (latitude, longitude)
-        if (!Array.isArray(coordinates) || coordinates.length !== 2 || 
+        if (!Array.isArray(coordinates) || coordinates.length !== 2 ||
             typeof coordinates[0] !== 'number' || typeof coordinates[1] !== 'number') {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Coordinates must be an array with [longitude, latitude].' 
+            return res.status(400).json({
+                success: false,
+                error: 'Coordinates must be an array with [longitude, latitude].'
             });
         }
 

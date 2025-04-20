@@ -10,6 +10,9 @@ interface User {
   email: string;
   role: 'user' | 'admin';
   telephoneNumber: string;
+  membership?: {
+    status: 'active' | 'cancelled' | 'pending' | string; // Allow other statuses too
+  };
 }
 
 interface AuthContextType {

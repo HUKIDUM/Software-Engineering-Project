@@ -9,7 +9,7 @@ const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 
 // Load environment variables
-require('dotenv').config({ path: './config/config.env' });
+require('dotenv').config();
 
 // Connect to MongoDB
 const connectDB = async () => {

@@ -1,28 +1,13 @@
 const Equipment = require('../models/equipment');
 const CoworkingSpace = require('../models/coworkingSpace');
-const EquipmentRequest = require('../models/EquipmentRequest');
 const asyncHandler = require('../middleware/async');
 const ErrorResponse = require('../utils/errorResponse');
+
 
 // @desc    Get all equipment, optionally filtered by coworking space
 // @route   GET /api/v1/equipment
 // @route   GET /api/v1/coworkingspaces/:coworkingSpaceId/equipment
 // @access  Public
-exports.getCustomerEquipmentRequests = asyncHandler(async (req, res, next) => {
-    const { customerId } = req.params;
-
-    const equipmentRequests = await EquipmentRequest.find({ customerId });
-
-    if (!equipmentRequests.length) {
-        return next(new ErrorResponse('No equipment requests found for this customer.', 404));
-    }
-
-    res.status(200).json({
-        success: true,
-        data: equipmentRequests
-    });
-});
-
 exports.getEquipments = asyncHandler(async (req, res, next) => {
     let query;
 

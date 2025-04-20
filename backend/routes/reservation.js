@@ -9,7 +9,8 @@ const {
     createReservation,
     updateReservation,
     deleteReservation,
-    getBookedSlots
+    getBookedSlots,
+    getCustomerEquipmentRequests
 } = require('../controllers/reservation');
 
 // Admin can get all reservations

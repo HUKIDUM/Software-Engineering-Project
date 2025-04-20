@@ -64,11 +64,11 @@ export default function MembershipPage() {
         Enjoy exclusive benefits, rewards, and premium features by activating your membership.
       </p>
 
-      <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6">
+      {/* <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6">
         <p className="text-sm text-indigo-700">
           Once activated, your membership will be valid for 30 days from today.
         </p>
-      </div>
+      </div> */}
 
       {errorMessage && (
         <div className="mb-6 text-red-600">

@@ -41,9 +41,14 @@ const ReservationSchema = new mongoose.Schema({
 // ✅ Prevent user from submitting more than 3 active reservations
 ReservationSchema.pre('save', async function(next) {
     if (this.isNew || this.isModified('status')) {
+        // Get current date at the start of the day (midnight)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
         const activeReservations = await this.constructor.countDocuments({
             user: this.user,
             status: 'active',
+            date: { $gte: today }, // Only count future or today's reservations
             _id: { $ne: this._id } // Exclude the current reservation
         });
 

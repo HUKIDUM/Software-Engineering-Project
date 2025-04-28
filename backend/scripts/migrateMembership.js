@@ -40,7 +40,7 @@ const defaultMembershipPrograms = [
     name: 'Basic Membership',
     type: 'basic',
     description: 'Basic membership benefits',
-    pointsRequired: 1,
+    pointsRequired: 0,
     benefits: [
       { description: 'Access to member-only sections' },
       { description: 'Basic customer support' }
@@ -118,7 +118,7 @@ const migrate = async () => {
       
       // Find appropriate membership program based on type
       const programType = oldMembership.type || 'basic';
-      const membershipProgram = membershipPrograms.find(p => p.type === programType);
+      const membershipProgram = membershipPrograms.find(p => p.type === (programType === 'none' ? 'basic' : programType));
       
       if (!membershipProgram) {
         console.log(`No membership program found for type ${programType}, skipping`);

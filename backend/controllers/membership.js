@@ -39,6 +39,20 @@ exports.getMembership = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No membership found for this user' });
     }
 
+    // Only update membership type if status is active
+    if (user.membershipStatus === 'active') {
+      // Get the appropriate membership program based on current points
+      const membershipProgram = await getMembershipProgramFromPoints(user.membershipPoints);
+      
+      // Update user's membership if it's different from current
+      if (membershipProgram && (!user.membership || user.membership._id.toString() !== membershipProgram._id.toString())) {
+        user.membership = membershipProgram._id;
+        await user.save();
+        // Repopulate the membership after update
+        await user.populate('membership');
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -198,6 +212,20 @@ exports.updatePoints = async (req, res) => {
 exports.getAllUserMemberships = async (req, res) => {
   try {
     const users = await User.find().populate('membership').select('name email telephoneNumber membershipStatus membershipPoints membershipStartDate membershipEndDate membership');
+
+    // Update membership types for active users
+    for (const user of users) {
+      if (user.membershipStatus === 'active') {
+        const membershipProgram = await getMembershipProgramFromPoints(user.membershipPoints);
+        
+        if (membershipProgram && (!user.membership || user.membership._id.toString() !== membershipProgram._id.toString())) {
+          user.membership = membershipProgram._id;
+          await user.save();
+          // Repopulate the membership after update
+          await user.populate('membership');
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,

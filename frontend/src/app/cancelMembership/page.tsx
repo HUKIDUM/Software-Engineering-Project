@@ -24,15 +24,15 @@ export default function CancelMembershipPage() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5003/api/v1/auth/membership', {
+      const res = await fetch('http://localhost:5003/api/v1/memberships', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          type: 'none',
           status: 'cancelled'
+          // No need to set type as it's determined by points
         })
       });
 
@@ -66,9 +66,15 @@ export default function CancelMembershipPage() {
 
       {!success ? (
         <>
-          <p className="mb-6 text-gray-700">
-            Are you sure you want to cancel your premium membership?
+          <p className="mb-4 text-gray-700">
+            Are you sure you want to cancel your membership?
           </p>
+          <div className="bg-yellow-50 p-4 rounded mb-6">
+            <p className="text-yellow-700 text-sm">
+              <strong>Note:</strong> Cancelling your membership will reset your reward points to 0. 
+              You'll need to earn points again to reach higher tiers if you rejoin later.
+            </p>
+          </div>
 
           {errorMessage && <p className="text-red-500 mb-4">{errorMessage}</p>}
 
@@ -91,7 +97,7 @@ export default function CancelMembershipPage() {
         </>
       ) : (
         <div className="text-green-700">
-          <p className="mb-4">✅ Your membership has been cancelled.</p>
+          <p className="mb-4">✅ Your membership has been cancelled and your points have been reset.</p>
           <button
             onClick={() => router.push('/profile')}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-md"

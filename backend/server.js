@@ -88,6 +88,7 @@ const coworkingSpaceRoutes = require('./routes/coworkingSpace');
 const equipmentRoutes = require('./routes/equipment');
 const menuRoutes = require('./routes/menu');
 const orderRoutes = require('./routes/orders');
+const membershipRoutes = require('./routes/membership');
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
@@ -96,6 +97,7 @@ app.use('/api/v1/coworking-spaces', coworkingSpaceRoutes);
 app.use('/api/v1/equipment', equipmentRoutes);
 app.use('/api/v1/menu', menuRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/memberships', membershipRoutes);
 
 // --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {

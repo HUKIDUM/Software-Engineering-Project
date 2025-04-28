@@ -2,11 +2,9 @@ const express = require('express');
 const {
     register,
     login,
-    logout,
     getMe,
-    setMembership,
-    getMembership
-} = require('../controllers/auth'); // Make sure `setMembership` and `getMembership` are exported from auth.js
+    logout
+} = require('../controllers/auth'); // Remove setMembership and getMembership imports
 
 const router = express.Router();
 const { protect } = require('../middleware/auth');
@@ -14,11 +12,9 @@ const { protect } = require('../middleware/auth');
 // Auth routes
 router.post('/register', register);
 router.post('/login', login);
-router.post('/logout', logout);  // Still public? You might want to protect it
 router.get('/me', protect, getMe);
+router.post('/logout', protect, logout);
 
-// Membership routes (require authentication)
-router.post('/membership', protect, setMembership);
-router.get('/membership', protect, getMembership);
+// Membership routes have been moved to a dedicated membership router
 
 module.exports = router;

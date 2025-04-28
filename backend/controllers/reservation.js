@@ -4,6 +4,8 @@ const Equipment = require('../models/equipment');
 const { sendEmail } = require('../utils/sendEmail');
 const ErrorResponse = require('../utils/errorResponse');
 const User = require('../models/user');
+const Membership = require('../models/Membership');
+const fetch = require('node-fetch');
 
 exports.getCustomerEquipmentRequests = async (req, res, next) => {
     try {
@@ -16,7 +18,7 @@ exports.getCustomerEquipmentRequests = async (req, res, next) => {
             });
         }
 
-        // Find reservations with equipment requests and populate equipment details
+        // Find reservations with equipment requests and populate equipment details 
         const reservations = await Reservation.find({
             user: customerId,
             'requestedEquipment.0': { $exists: true }
@@ -199,17 +201,29 @@ exports.createReservation = async (req, res, next) => {
 
         // --- Add Reward Points ---
         try {
-            // Find the user who made the reservation
-            const user = await User.findById(req.user._id);
-            if (user && user.membership) {
-                // Add 10 points
-                user.membership.points = (user.membership.points || 0) + 10;
-                await user.save(); // Save the updated user document
-                console.log(`✨ Added 10 reward points to user ${user.email}. New balance: ${user.membership.points}`);
-            } else if (user) {
-                console.warn(`User ${req.user._id} found, but has no membership object. Cannot add points.`);
+            // Update points through the membership points API
+            const pointsUpdateRes = await fetch(`${process.env.API_URL || 'http://localhost:5003'}/api/v1/memberships/points/${req.user._id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': req.headers.authorization
+                },
+                body: JSON.stringify({
+                    points: 10,
+                    operation: 'add'
+                })
+            });
+            
+            const pointsData = await pointsUpdateRes.json();
+            
+            if (pointsData.success) {
+                console.log(`✨ Added 10 reward points to user. New balance: ${pointsData.data.points}`);
+                // If user's tier changed, log it
+                if (pointsData.data.typeChanged) {
+                    console.log(`✨ User tier upgraded to: ${pointsData.data.type}`);
+                }
             } else {
-                console.error(`❌ Could not find user ${req.user._id} to add reward points.`);
+                console.warn(`Points update API call failed: ${pointsData.message}`);
             }
         } catch (pointError) {
             console.error(`❌ Error adding reward points for user ${req.user._id}:`, pointError);
@@ -339,21 +353,32 @@ exports.deleteReservation = async (req, res) => {
 
         // --- Deduct Reward Points ---
         try {
-            const user = await User.findById(userId);
-            if (user && user.membership) {
-                const currentPoints = user.membership.points || 0;
-                const newPoints = Math.max(0, currentPoints - 10); // Ensure points don't go below 0
-                user.membership.points = newPoints;
-                await user.save();
-                console.log(`✨ Deducted up to 10 reward points from user ${user.email} upon reservation deletion. New balance: ${user.membership.points}`);
-            } else if (user) {
-                console.warn(`User ${userId} found, but has no membership object. Cannot deduct points.`);
+            // Update points through the membership points API
+            const pointsUpdateRes = await fetch(`${process.env.API_URL || 'http://localhost:5003'}/api/v1/memberships/points/${userId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': req.headers.authorization
+                },
+                body: JSON.stringify({
+                    points: 10,
+                    operation: 'subtract'
+                })
+            });
+            
+            const pointsData = await pointsUpdateRes.json();
+            
+            if (pointsData.success) {
+                console.log(`✨ Deducted 10 reward points from user. New balance: ${pointsData.data.points}`);
+                // If user's tier changed, log it
+                if (pointsData.data.typeChanged) {
+                    console.log(`✨ User tier changed to: ${pointsData.data.type}`);
+                }
             } else {
-                // This case should ideally not happen if the reservation had a valid user ref
-                console.error(`❌ Could not find user ${userId} associated with the reservation to deduct points.`);
+                console.warn(`Points update API call failed: ${pointsData.message}`);
             }
         } catch (pointError) {
-            console.error(`❌ Error updating reward points for user ${userId} during reservation deletion:`, pointError);
+            console.error(`❌ Error deducting reward points for user ${userId}:`, pointError);
             // Decide if this should block the deletion. For now, we'll proceed with deletion.
         }
         // --- End Deduct Reward Points ---

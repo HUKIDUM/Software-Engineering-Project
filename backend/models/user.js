@@ -34,27 +34,25 @@ const userSchema = new mongoose.Schema({
     required: true
   },
   membership: {
-    type: {
-      type: String,
-      enum: ['none', 'basic', 'gold', 'platinum', 'diamond', 'premium'],
-      default: 'none'
-    },
-    status: {
-      type: String,
-      enum: ['inactive', 'active', 'cancelled'],
-      default: 'inactive'
-    },
-    startDate: {
-      type: Date
-    },
-    endDate: {
-      type: Date
-    },
-    // ← new field for reward points
-    points: {
-      type: Number,
-      default: 0
-    }
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MembershipProgram'
+  },
+  membershipStatus: {
+    type: String,
+    enum: ['inactive', 'active', 'cancelled'],
+    default: 'inactive'
+  },
+  membershipPoints: {
+    type: Number,
+    default: 0
+  },
+  membershipStartDate: {
+    type: Date,
+    default: Date.now
+  },
+  membershipEndDate: {
+    type: Date,
+    default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
   },
   createdAt: {
     type: Date,

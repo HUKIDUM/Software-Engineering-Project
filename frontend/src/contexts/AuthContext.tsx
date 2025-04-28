@@ -10,10 +10,7 @@ interface User {
   email: string;
   role: 'user' | 'admin';
   telephoneNumber: string;
-  membership?: {
-    type?: 'basic' /*| 'premium'*/ | 'platinum' | 'gold' | 'diamond' | string;
-    status: 'active' | 'cancelled' | 'pending' | string; // Allow other statuses too
-  };
+  membership?: string; // Changed: Now just an ObjectId reference
 }
 
 interface AuthContextType {

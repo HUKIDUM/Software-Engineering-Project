@@ -66,7 +66,8 @@ exports.getReservations = async (req, res) => {
     try {
         const reservations = await Reservation.find()
             .populate('user', 'name email')
-            .populate('coworkingSpace');
+            .populate('coworkingSpace', 'name location')
+            .populate('requestedEquipment.equipment', 'name');
 
         res.status(200).json({ success: true, count: reservations.length, data: reservations });
     } catch (error) {
@@ -468,63 +469,6 @@ exports.createCoworkingSpace = async (req, res) => {
             error: error.message || 'Internal Server Error'
         });
     }
-};
-
-// @desc    Update requested equipment in a reservation
-// @route   PUT /api/v1/reservations/:reservationId/equipment
-// @access  Private (User who created the reservation)
-exports.updateRequestedEquipment = async (req, res, next) => {
-    const { reservationId } = req.params;
-    const { requestedEquipment } = req.body;
-
-    // Validate input
-    if (!requestedEquipment || !Array.isArray(requestedEquipment)) {
-        return next(new ErrorResponse('Invalid requested equipment data', 400));
-    }
-
-    // Find the reservation
-    const reservation = await Reservation.findById(reservationId);
-
-    if (!reservation) {
-        return next(new ErrorResponse(`Reservation not found with id of ${reservationId}`, 404));
-    }
-
-    // Ensure the user owns the reservation
-    if (reservation.user.toString() !== req.user.id) {
-        return next(new ErrorResponse('Not authorized to update this reservation', 403));
-    }
-
-    // Validate and update requested equipment
-    const validatedEquipment = [];
-    for (const item of requestedEquipment) {
-        if (!item.equipment || !item.quantityRequested) {
-            return next(new ErrorResponse('Each requested equipment must have an equipment ID and quantityRequested.', 400));
-        }
-
-        const equipmentDoc = await Equipment.findById(item.equipment);
-
-        if (!equipmentDoc) {
-            return next(new ErrorResponse(`Equipment with ID ${item.equipment} not found.`, 404));
-        }
-
-        if (equipmentDoc.quantityAvailable < item.quantityRequested) {
-            return next(new ErrorResponse(`Not enough quantity for ${equipmentDoc.name}. Available: ${equipmentDoc.quantityAvailable}, Requested: ${item.quantityRequested}.`, 400));
-        }
-
-        validatedEquipment.push({
-            equipment: item.equipment,
-            quantityRequested: item.quantityRequested,
-        });
-    }
-
-    // Update the reservation
-    reservation.requestedEquipment = validatedEquipment;
-    await reservation.save();
-
-    res.status(200).json({
-        success: true,
-        data: reservation,
-    });
 };
 
 // @desc    Update requested equipment in a reservation

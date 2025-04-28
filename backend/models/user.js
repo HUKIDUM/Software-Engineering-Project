@@ -62,11 +62,29 @@ const userSchema = new mongoose.Schema({
   }
 });
 
+// Encrypt password using bcrypt before saving
+userSchema.pre('save', async function (next) {
+  // Only run this function if password was actually modified
+  if (!this.isModified('password')) {
+    next();
+  }
+
+  // Hash the password with cost factor 10
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
 // Sign JWT and return
 userSchema.methods.getSignedJwtToken = function () {
   return jwt.sign({ userId: this._id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE
   });
+};
+
+// Add method to compare entered password with hashed password in DB
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // ... rest of schema (pre‑save hook, methods, etc.)

@@ -4,7 +4,7 @@
   "description": "Co-working Space Reservation System",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cross-env NODE_ENV=test jest --coverage --testTimeout=10000 --detectOpenHandles --forceExit",
     "dev": "nodemon server.js",
     "start": "node server.js",
     "deploy": "node deploy.js"
@@ -24,9 +24,14 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.2",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "cross-env": "^7.0.3",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^10.1.4",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.1.0"
   }
 }

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { FiPlus, FiMapPin, FiUsers, FiEdit2, FiEye, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiMapPin, FiUsers, FiEdit2, FiEye, FiTrash2, FiCreditCard } from 'react-icons/fi';
 
 interface CoworkingSpace {
   _id: string;
@@ -72,6 +72,10 @@ const AdminDashboardPage = () => {
     router.push('/admin/reservations');
   };
 
+  const manageMembershipPrograms = () => {
+    router.push('/admin/membership-programs');
+  };
+
   if (isLoading || loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -89,7 +93,7 @@ const AdminDashboardPage = () => {
               Admin Dashboard
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              Manage co-working spaces and reservations in the system
+              Manage co-working spaces, membership programs, and reservations in the system
             </p>
           </div>
           <div className="mt-5 flex lg:mt-0 lg:ml-4 space-x-3">
@@ -105,6 +109,13 @@ const AdminDashboardPage = () => {
               className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
             >
               View All Reservations
+            </button>
+            <button
+              onClick={manageMembershipPrograms}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <FiCreditCard className="-ml-1 mr-2 h-5 w-5" />
+              Manage Membership Programs
             </button>
           </div>
         </div>

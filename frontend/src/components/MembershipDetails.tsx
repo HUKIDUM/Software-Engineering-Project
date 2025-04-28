@@ -95,16 +95,26 @@ export default function MembershipDetails() {
     
     // If current type is not found or is the highest tier
     if (currentIndex === -1 || currentIndex === sortedPrograms.length - 1) {
-      return { nextTier: null, pointsNeeded: 0, progress: 100 };
+      return { nextTier: null, nextTierName: null, pointsNeeded: 0, progress: 100 };
     }
     
     // Get next tier program
     const nextProgram = sortedPrograms[currentIndex + 1];
     const pointsNeeded = nextProgram.pointsRequired - points;
-    const progress = Math.min(100, (points / nextProgram.pointsRequired) * 100);
+    
+    // Calculate progress towards next tier, not based on basic membership
+    const currentPoints = points;
+    const nextTierPoints = nextProgram.pointsRequired;
+    const currentTierPoints = currentIndex >= 0 ? sortedPrograms[currentIndex].pointsRequired : 0;
+    
+    // Calculate progress as percentage between current tier and next tier
+    const progressRange = nextTierPoints - currentTierPoints;
+    const pointsAboveCurrentTier = currentPoints - currentTierPoints;
+    const progress = Math.min(100, (pointsAboveCurrentTier / progressRange) * 100);
     
     return { 
-      nextTier: nextProgram.type, 
+      nextTier: nextProgram.type,
+      nextTierName: nextProgram.name,
       pointsNeeded, 
       progress 
     };
@@ -148,7 +158,7 @@ export default function MembershipDetails() {
     );
   }
 
-  const { nextTier, pointsNeeded, progress } = getNextTierInfo(
+  const { nextTier, nextTierName, pointsNeeded, progress } = getNextTierInfo(
     membership.program?.type || 'basic', 
     membership.points
   );
@@ -159,7 +169,7 @@ export default function MembershipDetails() {
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div className="text-gray-600">Type:</div>
         <div className="font-medium capitalize">
-          {membership.program?.name || 'Basic'}
+          {membership.program?.name || 'Basic Membership'}
           <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
             membership.program?.type === 'diamond' ? 'bg-blue-100 text-blue-800' :
             membership.program?.type === 'gold' ? 'bg-yellow-100 text-yellow-800' :
@@ -182,28 +192,16 @@ export default function MembershipDetails() {
         <div className="text-gray-600">Reward Points:</div>
         <div className="font-medium text-indigo-600">{membership.points} points</div>
       </div>
-      
-      {/* Tier progress - only show if not highest tier and active status */}
-      {nextTier && membership.status === 'active' && (
-        <div className="mt-4">
-          <div className="flex justify-between text-xs mb-1">
-            <span>Progress to {nextTier}</span>
-            <span>{progress.toFixed(0)}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-indigo-600 h-2 rounded-full" 
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            {pointsNeeded} more points needed to reach {nextTier}
-          </p>
-        </div>
-      )}
+    
       
       {membership.status === 'active' && (
-        <div className="mt-3">
+        <div className="mt-3 flex items-center justify-between">
+          <Link 
+            href="/profile/membership" 
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            Manage Membership & Rewards
+          </Link>
           <Link 
             href="/cancelMembership" 
             className="text-sm text-red-600 hover:text-red-800"

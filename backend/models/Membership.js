@@ -31,6 +31,25 @@ const membershipProgramSchema = new mongoose.Schema({
       type: String
     }
   }],
+  rewards: [{
+    name: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    pointsCost: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    isAvailable: {
+      type: Boolean,
+      default: true
+    }
+  }],
   isActive: {
     type: Boolean,
     default: true
@@ -50,5 +69,13 @@ membershipProgramSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();
 });
+
+// Static method to find all eligible membership programs for a given points amount
+membershipProgramSchema.statics.findEligiblePrograms = async function(points) {
+  return await this.find({
+    pointsRequired: { $lte: points },
+    isActive: true
+  }).sort({ pointsRequired: -1 });
+};
 
 module.exports = mongoose.model('MembershipProgram', membershipProgramSchema); 

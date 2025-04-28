@@ -54,6 +54,36 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
   },
+  redeemedRewards: [{
+    reward: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MembershipProgram.rewards'
+    },
+    membershipProgram: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MembershipProgram'
+    },
+    redeemedAt: {
+      type: Date,
+      default: Date.now
+    },
+    pointsSpent: {
+      type: Number,
+      required: true
+    },
+    status: {
+      type: String,
+      enum: ['redeemed', 'used', 'cancelled'],
+      default: 'redeemed'
+    },
+    rewardData: {
+      _id: String,
+      name: String,
+      description: String,
+      pointsCost: Number,
+      isAvailable: Boolean
+    }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -85,6 +115,13 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// ... rest of schema (pre‑save hook, methods, etc.)
+// Method to redeem a reward
+userSchema.methods.redeemReward = async function(rewardId, membershipProgramId) {
+  // This would be implemented in the controller, but the schema supports it
+  // 1. Find the reward in the membership program
+  // 2. Check if user has enough points
+  // 3. Deduct points and add to redeemedRewards
+  // 4. Return the redemption details
+};
 
 module.exports = mongoose.model('User', userSchema);

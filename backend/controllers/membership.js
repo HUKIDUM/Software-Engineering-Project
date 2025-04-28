@@ -22,6 +22,15 @@ const getMembershipProgramFromPoints = async (points) => {
   return programs[programs.length - 1] || null;
 };
 
+/**
+ * Gets all eligible membership programs for a user's points
+ * @param {Number} points - Current points
+ * @returns {Array} List of eligible membership programs
+ */
+const getEligibleMembershipPrograms = async (points) => {
+  return await MembershipProgram.findEligiblePrograms(points);
+};
+
 // @desc    Get current user's membership
 // @route   GET /api/v1/memberships
 // @access  Private
@@ -53,10 +62,14 @@ exports.getMembership = async (req, res) => {
       }
     }
 
+    // Get all eligible membership programs
+    const eligiblePrograms = await getEligibleMembershipPrograms(user.membershipPoints);
+
     res.status(200).json({
       success: true,
       data: {
-        program: user.membership,
+        currentProgram: user.membership,
+        eligiblePrograms: eligiblePrograms,
         status: user.membershipStatus,
         points: user.membershipPoints,
         startDate: user.membershipStartDate,
@@ -353,6 +366,291 @@ exports.deleteMembershipProgram = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {}
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get all eligible membership programs for the user
+// @route   GET /api/v1/memberships/eligible
+// @access  Private
+exports.getEligibleMemberships = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const eligiblePrograms = await getEligibleMembershipPrograms(user.membershipPoints);
+
+    res.status(200).json({
+      success: true,
+      count: eligiblePrograms.length,
+      data: eligiblePrograms
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Choose a specific membership program from eligible ones
+// @route   POST /api/v1/memberships/choose/:programId
+// @access  Private
+exports.chooseMembershipProgram = async (req, res) => {
+  try {
+    const { programId } = req.params;
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Find the requested program
+    const program = await MembershipProgram.findById(programId);
+    
+    if (!program) {
+      return res.status(404).json({ success: false, message: 'Membership program not found' });
+    }
+
+    // Check if user has enough points for this program
+    if (user.membershipPoints < program.pointsRequired) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Not enough points for this membership program' 
+      });
+    }
+
+    // Check if program is active
+    if (!program.isActive) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'This membership program is not currently active' 
+      });
+    }
+
+    // Update user's membership
+    user.membership = program._id;
+    user.membershipStatus = 'active';
+    await user.save();
+
+    // Populate membership for response
+    await user.populate('membership');
+
+    res.status(200).json({
+      success: true,
+      message: 'Membership program selected successfully',
+      data: {
+        program: user.membership,
+        status: user.membershipStatus,
+        points: user.membershipPoints
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get available rewards for user's membership
+// @route   GET /api/v1/memberships/rewards
+// @access  Private
+exports.getMembershipRewards = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate('membership');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.membership) {
+      return res.status(404).json({ success: false, message: 'User has no active membership' });
+    }
+
+    // Get all eligible programs
+    const eligiblePrograms = await getEligibleMembershipPrograms(user.membershipPoints);
+    
+    // Extract rewards from all eligible programs
+    const availableRewards = [];
+    eligiblePrograms.forEach(program => {
+      program.rewards.forEach(reward => {
+        if (reward.isAvailable) {
+          availableRewards.push({
+            reward,
+            programId: program._id,
+            programName: program.name
+          });
+        }
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      count: availableRewards.length,
+      data: availableRewards
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Redeem a reward
+// @route   POST /api/v1/memberships/rewards/redeem
+// @access  Private
+exports.redeemReward = async (req, res) => {
+  try {
+    const { programId, rewardId } = req.body;
+    
+    if (!programId || !rewardId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both programId and rewardId'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Find the program
+    const program = await MembershipProgram.findById(programId);
+    if (!program) {
+      return res.status(404).json({ success: false, message: 'Membership program not found' });
+    }
+
+    // Find the reward in the program
+    const reward = program.rewards.id(rewardId);
+    if (!reward) {
+      return res.status(404).json({ success: false, message: 'Reward not found in this program' });
+    }
+
+    // Check if the reward is available
+    if (!reward.isAvailable) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'This reward is not currently available' 
+      });
+    }
+
+    // Check if user has enough points
+    if (user.membershipPoints < reward.pointsCost) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Not enough points to redeem this reward' 
+      });
+    }
+
+    // Deduct points
+    user.membershipPoints -= reward.pointsCost;
+
+    // Store the reward data directly instead of just the ID
+    // This ensures we have the complete reward data even if it's modified later
+    const rewardData = {
+      _id: reward._id,
+      name: reward.name,
+      description: reward.description,
+      pointsCost: reward.pointsCost,
+      isAvailable: reward.isAvailable
+    };
+
+    // Add to user's redeemed rewards
+    user.redeemedRewards.push({
+      reward: rewardId, // Keep this for backwards compatibility
+      membershipProgram: programId,
+      pointsSpent: reward.pointsCost,
+      status: 'redeemed',
+      rewardData: rewardData // Add the complete reward data
+    });
+
+    await user.save();
+
+    // Check if membership tier changed due to point deduction
+    const newMembershipProgram = await getMembershipProgramFromPoints(user.membershipPoints);
+    if (newMembershipProgram && user.membership.toString() !== newMembershipProgram._id.toString()) {
+      user.membership = newMembershipProgram._id;
+      await user.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Reward redeemed successfully',
+      data: {
+        reward: reward,
+        remainingPoints: user.membershipPoints,
+        redemptionStatus: 'redeemed'
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get user's redeemed rewards history
+// @route   GET /api/v1/memberships/rewards/history
+// @access  Private
+exports.getRedemptionHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .populate({
+        path: 'redeemedRewards.membershipProgram',
+        select: 'name type description'
+      });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    console.log('User redeemed rewards:', JSON.stringify(user.redeemedRewards, null, 2));
+
+    // We need to manually populate the rewards since they are stored as subdocuments
+    const populatedRewards = [];
+
+    // Only process if there are redeemed rewards
+    if (user.redeemedRewards && user.redeemedRewards.length > 0) {
+      for (const redeemedReward of user.redeemedRewards) {
+        let rewardData = null;
+        
+        // First, check if we have the reward data directly stored (new approach)
+        if (redeemedReward.rewardData) {
+          rewardData = redeemedReward.rewardData;
+        } else {
+          // Fall back to the old approach: find the reward in the program
+          try {
+            const program = await MembershipProgram.findById(redeemedReward.membershipProgram._id);
+            if (program) {
+              rewardData = program.rewards.id(redeemedReward.reward);
+            }
+          } catch (err) {
+            console.error('Error fetching reward from program:', err);
+          }
+        }
+        
+        // Only add to response if we have reward data
+        if (rewardData) {
+          populatedRewards.push({
+            _id: redeemedReward._id,
+            reward: rewardData,
+            membershipProgram: redeemedReward.membershipProgram,
+            redeemedAt: redeemedReward.redeemedAt,
+            pointsSpent: redeemedReward.pointsSpent,
+            status: redeemedReward.status
+          });
+        }
+      }
+    }
+
+    console.log('Populated rewards:', JSON.stringify(populatedRewards, null, 2));
+
+    res.status(200).json({
+      success: true,
+      count: populatedRewards.length,
+      data: populatedRewards
     });
   } catch (err) {
     console.error(err);

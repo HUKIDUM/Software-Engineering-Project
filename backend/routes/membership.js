@@ -13,7 +13,8 @@ const {
   chooseMembershipProgram,
   getMembershipRewards,
   redeemReward,
-  getRedemptionHistory
+  getRedemptionHistory,
+  getMembershipStats
 } = require('../controllers/membership');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -35,6 +36,9 @@ router.get('/rewards/history', protect, getRedemptionHistory);
 
 // Admin-only routes for user memberships
 router.get('/users', protect, authorize('admin'), getAllUserMemberships);
+
+// Admin-only route for membership statistics
+router.get('/stats', protect, authorize('admin'), getMembershipStats);
 
 // Special routes
 router.put('/points/:userId', protect, updatePoints);

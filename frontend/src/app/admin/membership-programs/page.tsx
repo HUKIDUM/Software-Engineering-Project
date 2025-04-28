@@ -4,7 +4,29 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { FiPlus, FiEdit2, FiTrash2, FiEye, FiAward, FiGift } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiEye, FiAward, FiGift, FiBarChart2 } from 'react-icons/fi';
+import { 
+  Chart as ChartJS, 
+  ArcElement, 
+  Tooltip, 
+  Legend, 
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title
+} from 'chart.js';
+import { Pie, Bar } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  ArcElement, 
+  Tooltip, 
+  Legend, 
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title
+);
 
 interface Benefit {
   _id: string;
@@ -33,6 +55,17 @@ interface MembershipProgram {
   updatedAt: string;
 }
 
+interface MembershipStats {
+  totalMembers: number;
+  activeMembers: number;
+  inactiveMembers: number;
+  cancelledMembers: number;
+  totalRedemptions: number;
+  programDistribution: Record<string, number>;
+  redemptionsPerProgram: Record<string, number>;
+  redemptionPercentage: number;
+}
+
 export default function MembershipProgramsPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
@@ -42,6 +75,8 @@ export default function MembershipProgramsPage() {
   const [success, setSuccess] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentProgram, setCurrentProgram] = useState<MembershipProgram | null>(null);
+  const [activeTab, setActiveTab] = useState('programs'); // 'programs' or 'statistics'
+  const [stats, setStats] = useState<MembershipStats | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     type: 'basic',
@@ -65,6 +100,7 @@ export default function MembershipProgramsPage() {
       }
       
       fetchMembershipPrograms();
+      fetchMembershipStats();
     }
   }, [isAuthenticated, isLoading, user, router]);
 
@@ -79,6 +115,17 @@ export default function MembershipProgramsPage() {
       setError('Failed to load membership programs. Please try again later.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMembershipStats = async () => {
+    try {
+      const response = await api.get('/memberships/stats');
+      if (response.data.success) {
+        setStats(response.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching membership statistics:', err);
     }
   };
 
@@ -269,72 +316,274 @@ export default function MembershipProgramsPage() {
           </div>
         )}
 
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <div className="px-4 py-5 sm:px-6">
-            <h2 className="text-lg leading-6 font-medium text-gray-900">Membership Programs</h2>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              A list of all membership programs in the system
-            </p>
-          </div>
-          {membershipPrograms.length === 0 ? (
-            <div className="text-center py-12 px-4">
-              <p className="text-gray-500">No membership programs found.</p>
-              <button
-                onClick={openCreateModal}
-                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                <FiPlus className="-ml-1 mr-2 h-5 w-5" />
-                Create New Membership Program
-              </button>
+        {/* Tabs for Programs and Statistics */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('programs')}
+              className={`${
+                activeTab === 'programs'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Programs
+            </button>
+            <button
+              onClick={() => setActiveTab('statistics')}
+              className={`${
+                activeTab === 'statistics'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
+            >
+              <FiBarChart2 className="mr-2" />
+              Statistics
+            </button>
+          </nav>
+        </div>
+
+        {/* Programs Tab Content */}
+        {activeTab === 'programs' && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+            <div className="px-4 py-5 sm:px-6">
+              <h2 className="text-lg leading-6 font-medium text-gray-900">Membership Programs</h2>
+              <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                A list of all membership programs in the system
+              </p>
             </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {membershipPrograms.map((program) => (
-                <li key={program._id}>
-                  <div className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <div className="flex items-center">
-                          <p className="text-md font-medium text-indigo-600 truncate">{program.name}</p>
-                          <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${program.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {program.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                          <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                            {program.type}
-                          </span>
+            {membershipPrograms.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <p className="text-gray-500">No membership programs found.</p>
+                <button
+                  onClick={openCreateModal}
+                  className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <FiPlus className="-ml-1 mr-2 h-5 w-5" />
+                  Create New Membership Program
+                </button>
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {membershipPrograms.map((program) => (
+                  <li key={program._id}>
+                    <div className="px-4 py-4 sm:px-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <div className="flex items-center">
+                            <p className="text-md font-medium text-indigo-600 truncate">{program.name}</p>
+                            <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${program.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {program.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                            <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                              {program.type}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500">{program.description}</p>
+                          <div className="mt-1 flex items-center">
+                            <FiAward className="flex-shrink-0 mr-1.5 h-4 w-4 text-yellow-500" />
+                            <span className="text-sm text-gray-700">{program.pointsRequired} points required</span>
+                            
+                            <FiGift className="flex-shrink-0 ml-4 mr-1.5 h-4 w-4 text-indigo-500" />
+                            <span className="text-sm text-gray-700">{program.rewards.length} rewards</span>
+                          </div>
                         </div>
-                        <p className="mt-1 text-sm text-gray-500">{program.description}</p>
-                        <div className="mt-1 flex items-center">
-                          <FiAward className="flex-shrink-0 mr-1.5 h-4 w-4 text-yellow-500" />
-                          <span className="text-sm text-gray-700">{program.pointsRequired} points required</span>
-                          
-                          <FiGift className="flex-shrink-0 ml-4 mr-1.5 h-4 w-4 text-indigo-500" />
-                          <span className="text-sm text-gray-700">{program.rewards.length} rewards</span>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => openEditModal(program)}
+                            className="inline-flex items-center p-1.5 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            title="Edit"
+                          >
+                            <FiEdit2 className="h-5 w-5 text-gray-500" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(program._id)}
+                            className="inline-flex items-center p-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                            title="Delete"
+                          >
+                            <FiTrash2 className="h-5 w-5" />
+                          </button>
                         </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => openEditModal(program)}
-                          className="inline-flex items-center p-1.5 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                          title="Edit"
-                        >
-                          <FiEdit2 className="h-5 w-5 text-gray-500" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(program._id)}
-                          className="inline-flex items-center p-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
-                          title="Delete"
-                        >
-                          <FiTrash2 className="h-5 w-5" />
-                        </button>
                       </div>
                     </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Statistics Tab Content */}
+        {activeTab === 'statistics' && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+            <div className="px-4 py-5 sm:px-6">
+              <h2 className="text-lg leading-6 font-medium text-gray-900">Membership Statistics</h2>
+              <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                Overview of membership program metrics and user data
+              </p>
+            </div>
+            
+            {!stats ? (
+              <div className="text-center py-12 px-4">
+                <p className="text-gray-500">Loading statistics...</p>
+              </div>
+            ) : (
+              <div className="p-6">
+                {/* Summary cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                  <div className="bg-white overflow-hidden shadow rounded-lg border">
+                    <div className="px-4 py-5 sm:p-6">
+                      <dt className="text-sm font-medium text-gray-500 truncate">Total Members</dt>
+                      <dd className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalMembers}</dd>
+                    </div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                  
+                  <div className="bg-white overflow-hidden shadow rounded-lg border">
+                    <div className="px-4 py-5 sm:p-6">
+                      <dt className="text-sm font-medium text-gray-500 truncate">Active Members</dt>
+                      <dd className="mt-1 text-3xl font-semibold text-green-600">{stats.activeMembers}</dd>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white overflow-hidden shadow rounded-lg border">
+                    <div className="px-4 py-5 sm:p-6">
+                      <dt className="text-sm font-medium text-gray-500 truncate">Total Redemptions</dt>
+                      <dd className="mt-1 text-3xl font-semibold text-indigo-600">{stats.totalRedemptions}</dd>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white overflow-hidden shadow rounded-lg border">
+                    <div className="px-4 py-5 sm:p-6">
+                      <dt className="text-sm font-medium text-gray-500 truncate">Redemption Rate</dt>
+                      <dd className="mt-1 text-3xl font-semibold text-amber-600">
+                        {stats.redemptionPercentage.toFixed(1)}%
+                      </dd>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Charts */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Membership Distribution Chart */}
+                  <div className="bg-white overflow-hidden shadow rounded-lg border p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Membership Distribution</h3>
+                    <div className="h-64">
+                      <Pie
+                        data={{
+                          labels: Object.keys(stats.programDistribution),
+                          datasets: [
+                            {
+                              data: Object.values(stats.programDistribution),
+                              backgroundColor: [
+                                '#3B82F6', // blue
+                                '#10B981', // green
+                                '#F59E0B', // amber
+                                '#EF4444', // red
+                                '#8B5CF6', // purple
+                                '#EC4899', // pink
+                              ],
+                              borderWidth: 1,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Redemptions Per Program Chart */}
+                  <div className="bg-white overflow-hidden shadow rounded-lg border p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Redemptions by Program</h3>
+                    <div className="h-64">
+                      <Bar
+                        data={{
+                          labels: Object.keys(stats.redemptionsPerProgram),
+                          datasets: [
+                            {
+                              label: 'Number of Redemptions',
+                              data: Object.values(stats.redemptionsPerProgram),
+                              backgroundColor: '#3B82F6',
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              ticks: {
+                                precision: 0
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Member Status Distribution */}
+                  <div className="bg-white overflow-hidden shadow rounded-lg border p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Member Status Distribution</h3>
+                    <div className="h-64">
+                      <Pie
+                        data={{
+                          labels: ['Active', 'Inactive', 'Cancelled'],
+                          datasets: [
+                            {
+                              data: [
+                                stats.activeMembers,
+                                stats.inactiveMembers,
+                                stats.cancelledMembers
+                              ],
+                              backgroundColor: [
+                                '#10B981', // green for active
+                                '#F59E0B', // amber for inactive
+                                '#EF4444', // red for cancelled
+                              ],
+                              borderWidth: 1,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Redemption Percentage Visualization */}
+                  <div className="bg-white overflow-hidden shadow rounded-lg border p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Redemption Rate</h3>
+                    <div className="flex flex-col items-center justify-center h-64">
+                      <div className="relative mb-4">
+                        <div className="w-36 h-36 rounded-full flex items-center justify-center border-8" 
+                             style={{ 
+                               borderColor: '#3B82F6',
+                               background: `conic-gradient(#3B82F6 ${stats.redemptionPercentage * 3.6}deg, #f3f4f6 0deg)`
+                             }}>
+                          <div className="w-28 h-28 bg-white rounded-full flex items-center justify-center">
+                            <span className="text-3xl font-bold text-gray-900">
+                              {stats.redemptionPercentage.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-gray-500 text-center">
+                        {stats.redemptionPercentage.toFixed(1)}% of members have redeemed at least one reward
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* Modal for Create/Edit */}

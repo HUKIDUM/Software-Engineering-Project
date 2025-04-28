@@ -656,4 +656,86 @@ exports.getRedemptionHistory = async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
+};
+
+// @desc    Get membership statistics for admin dashboard
+// @route   GET /api/v1/memberships/stats
+// @access  Private (Admin)
+exports.getMembershipStats = async (req, res) => {
+  try {
+    // Get all users with membership information
+    const users = await User.find().populate('membership');
+    
+    // Get all membership programs
+    const membershipPrograms = await MembershipProgram.find();
+    
+    // Initialize statistics data
+    const stats = {
+      totalMembers: 0,
+      activeMembers: 0,
+      inactiveMembers: 0,
+      cancelledMembers: 0,
+      totalRedemptions: 0,
+      programDistribution: {},
+      redemptionsPerProgram: {},
+      redemptionPercentage: 0
+    };
+    
+    // Calculate user membership statistics
+    stats.totalMembers = users.length;
+    stats.activeMembers = users.filter(user => user.membershipStatus === 'active').length;
+    stats.inactiveMembers = users.filter(user => user.membershipStatus === 'inactive').length;
+    stats.cancelledMembers = users.filter(user => user.membershipStatus === 'cancelled').length;
+    
+    // Count users with redemptions
+    const usersWithRedemptions = users.filter(user => 
+      user.redeemedRewards && user.redeemedRewards.length > 0
+    ).length;
+    
+    // Calculate redemption percentage
+    stats.redemptionPercentage = stats.totalMembers > 0 
+      ? (usersWithRedemptions / stats.totalMembers) * 100 
+      : 0;
+    
+    // Initialize program distributions
+    membershipPrograms.forEach(program => {
+      stats.programDistribution[program.name] = 0;
+      stats.redemptionsPerProgram[program.name] = 0;
+    });
+    
+    // Count users in each program
+    users.forEach(user => {
+      if (user.membership) {
+        const programName = user.membership.name || 'Unknown';
+        stats.programDistribution[programName] = (stats.programDistribution[programName] || 0) + 1;
+      }
+      
+      // Count total redemptions and redemptions per program
+      if (user.redeemedRewards && user.redeemedRewards.length > 0) {
+        stats.totalRedemptions += user.redeemedRewards.length;
+        
+        // Count redemptions per program
+        user.redeemedRewards.forEach(redemption => {
+          if (redemption.membershipProgram) {
+            const program = membershipPrograms.find(p => 
+              p._id.toString() === redemption.membershipProgram.toString()
+            );
+            
+            if (program) {
+              stats.redemptionsPerProgram[program.name] = 
+                (stats.redemptionsPerProgram[program.name] || 0) + 1;
+            }
+          }
+        });
+      }
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 }; 

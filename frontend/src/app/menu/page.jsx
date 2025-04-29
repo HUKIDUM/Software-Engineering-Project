@@ -1,7 +1,8 @@
-'use client'; // Menu likely fetches data client-side
+'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Menu from '@/components/Menu/Menu';
 import Cart from '@/components/Cart/Cart';
 import { placeOrder } from '@/lib/orderApi';
@@ -12,55 +13,50 @@ export default function MenuPage() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [orderError, setOrderError] = useState(null);
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const handleAddItem = (item) => {
-      setCartItems(prevItems => {
-          const existingItem = prevItems.find(i => i._id === item._id);
-          if (existingItem) {
-              return prevItems.map(i => 
-                  i._id === item._id ? { ...i, quantity: i.quantity + 1 } : i
-              );
-          } else {
-              return [...prevItems, { ...item, quantity: 1 }];
-          }
-      });
+    setCartItems(prevItems => {
+      const existing = prevItems.find(i => i._id === item._id);
+      if (existing) {
+        return prevItems.map(i =>
+          i._id === item._id ? { ...i, quantity: i.quantity + item.quantity } : i
+        );
+      }
+      return [...prevItems, item];
+    });
+  };
+
+  const handleRemoveItem = (itemId) => {
+    setCartItems(prev => prev.filter(i => i._id !== itemId));
   };
 
   const handlePlaceOrder = async () => {
     if (!token) {
-        setOrderError("You must be logged in to place an order.");
-        return;
+      setOrderError("You must be logged in to place an order.");
+      return;
     }
     if (cartItems.length === 0) {
-        setOrderError("Your cart is empty.");
-        return;
+      setOrderError("Your cart is empty.");
+      return;
     }
 
     setIsPlacingOrder(true);
     setOrderError(null);
 
-    const orderPayloadItems = cartItems.map(item => ({
-        menuItem: item._id,
-        quantity: item.quantity
-    }));
+    const payload = cartItems.map(i => ({ menuItem: i._id, quantity: i.quantity }));
 
     try {
-      const placedOrderResponse = await placeOrder(orderPayloadItems, token);
-      console.log('Order placed response:', placedOrderResponse);
+      const res = await placeOrder(payload, token);
       setCartItems([]);
-
-      if (placedOrderResponse && placedOrderResponse.data && placedOrderResponse.data._id) {
-          const redirectUrl = `/orders/${placedOrderResponse.data._id}`;
-          console.log(`>>> Redirecting to: ${redirectUrl}`);
-          router.push(redirectUrl);
+      const orderId = res?.data?._id;
+      if (orderId) {
+        router.push(`/orders/${orderId}`);
       } else {
-          console.error('Order placed, but response format is unexpected:', placedOrderResponse);
-          setOrderError('Order placed, but could not retrieve order details for redirection.');
+        setOrderError('Order placed, but cannot redirect.');
       }
     } catch (err) {
-      console.error("Failed to place order:", err);
-      setOrderError(err.message || 'Could not place order. Please try again.');
+      setOrderError(err.message || 'Failed to place order.');
     } finally {
       setIsPlacingOrder(false);
     }
@@ -74,10 +70,23 @@ export default function MenuPage() {
       </div>
 
       <div className="md:w-1/3 lg:w-1/4">
-        <Cart cartItems={cartItems} onPlaceOrder={handlePlaceOrder} />
+        <Cart
+          cartItems={cartItems}
+          onPlaceOrder={handlePlaceOrder}
+          onRemoveItem={handleRemoveItem}
+        />
         {isPlacingOrder && <p className="text-center mt-2">Placing order...</p>}
-        {orderError && <p className="text-red-500 text-center mt-2">{orderError}</p>}
+        {orderError  && <p className="text-red-500 text-center mt-2">{orderError}</p>}
+
+        {user && (
+          <Link
+            href="/order-history"
+            className="mt-4 block w-full text-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Order History
+          </Link>
+        )}
       </div>
     </div>
   );
-} 
+}

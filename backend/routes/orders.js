@@ -1,24 +1,34 @@
 const express = require('express');
+const router  = express.Router();
 const {
-    placeOrder,
-    getOrderById,
-    getAllOrders // Import the new controller function
+  placeOrder,
+  getUserOrders,
+  getOrderById,
+  getAllOrders,
+  updateOrder,
+  deleteOrder
 } = require('../controllers/orderController');
-const { protect, authorize } = require('../middleware/auth'); // Import authentication middleware and authorize
+const { protect, authorize } = require('../middleware/auth');
 
-const router = express.Router();
-
-// Apply protect middleware to all routes defined AFTER this line in this file
+// All routes below require authentication
 router.use(protect);
 
-// Route for POST /api/v1/orders
-router.route('/').post(placeOrder);
+// Publicly: Place a new order or list your own orders
+router
+  .route('/')
+  .get(getUserOrders)
+  .post(placeOrder);
 
-// Route for GET /api/v1/orders/:orderId (Placeholder for Step 5)
-// This will also be protected because router.use(protect) is above it
-router.route('/:orderId').get(getOrderById);
+// Fetch a specific order by ID
+router.route('/:orderId')
+  .get(getOrderById);
 
-// Route to get all orders (requires admin role)
+// Admin: get all orders
 router.get('/admin/all', authorize('admin'), getAllOrders);
 
-module.exports = router; 
+// Admin: update or delete any order
+router.route('/:orderId')
+  .put(authorize('admin'), updateOrder)
+  .delete(authorize('admin'), deleteOrder);
+
+module.exports = router;

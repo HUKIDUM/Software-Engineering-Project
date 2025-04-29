@@ -109,4 +109,68 @@ exports.logout = (req, res) => {
     }
 };
 
-// Membership related functions have been moved to the membership controller
+
+
+/////////// membership
+// @route  POST /api/v1/auth/membership
+// @access Private
+// @route  POST /api/v1/auth/membership
+// @access Private
+exports.setMembership = async (req, res) => {
+    try {
+        // include points in the destructuring
+        const { type, status, startDate, endDate, points } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // update only provided fields, preserve existing otherwise
+        user.membership.type = type || user.membership.type || 'basic';
+        user.membership.status = status || user.membership.status || 'active';
+        user.membership.startDate = startDate ? new Date(startDate) : user.membership.startDate || new Date();
+        user.membership.endDate = endDate ? new Date(endDate) : user.membership.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        // Reset points to 0 if status is 'cancelled', otherwise update normally
+        if (status === 'cancelled') {
+            user.membership.points = 0;
+        } else {
+            user.membership.points = typeof points === 'number'
+                ? points
+                : user.membership.points || 0; // Use existing or default to 0
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Membership updated',
+            data: user.membership
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// @route  GET /api/v1/auth/membership
+// @access Private
+exports.getMembership = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // now includes points
+        res.status(200).json({
+            success: true,
+            data: user.membership
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};

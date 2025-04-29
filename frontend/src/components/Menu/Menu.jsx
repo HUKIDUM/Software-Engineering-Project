@@ -1,6 +1,7 @@
 'use client'; // Indicate this is a Client Component
 
 import React, { useState, useEffect } from 'react';
+import { FiEdit2 } from 'react-icons/fi';
 
 // Helper function for formatting price (optional)
 const formatPrice = (price) => {
@@ -13,33 +14,36 @@ const formatPrice = (price) => {
 };
 
 // Accept onAddToCart prop
-function Menu({ onAddToCart }) {
+export default function Menu({ onAddToCart }) {
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [itemQuantities, setItemQuantities] = useState({});
 
   useEffect(() => {
     const fetchMenu = async () => {
       setLoading(true);
-      setError(null); // Clear previous errors
+      setError(null);
       try {
-        const response = await fetch('/api/v1/menu'); // Fetch from backend endpoint
-
+        const response = await fetch('/api/v1/menu');
         if (!response.ok) {
-          // Handle HTTP errors like 4xx, 5xx
           let errorMsg = `HTTP error! status: ${response.status}`;
           try {
-             const errorData = await response.json();
-             errorMsg = errorData.error || errorData.message || errorMsg;
-          } catch(e) { /* Ignore if response body isn't json */ }
+            const errorData = await response.json();
+            errorMsg = errorData.error || errorData.message || errorMsg;
+          } catch(e) {}
           throw new Error(errorMsg);
         }
-
         const data = await response.json();
-        setMenuItems(Array.isArray(data) ? data : []); // Ensure data is an array
+        setMenuItems(Array.isArray(data) ? data : []);
+        // Initialize quantities to 0 for all items
+        const initialQuantities = {};
+        data.forEach(item => {
+          initialQuantities[item._id] = 0;
+        });
+        setItemQuantities(initialQuantities);
       } catch (err) {
         console.error("Error fetching menu:", err);
-        // Set a user-friendly error message
         setError(`Error fetching menu: ${err.message || 'Please try again later.'}`);
       } finally {
         setLoading(false);
@@ -47,7 +51,21 @@ function Menu({ onAddToCart }) {
     };
 
     fetchMenu();
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
+
+  const handleQuantityChange = (itemId, change) => {
+    setItemQuantities(prev => {
+      const newQuantity = Math.max(0, (prev[itemId] || 0) + change);
+      return { ...prev, [itemId]: newQuantity };
+    });
+  };
+
+  const handleAddToCart = (item) => {
+    if (itemQuantities[item._id] > 0) {
+      onAddToCart({ ...item, quantity: itemQuantities[item._id] });
+      setItemQuantities(prev => ({ ...prev, [item._id]: 0 }));
+    }
+  };
 
   // --- Render Logic ---
   if (loading) {
@@ -65,30 +83,47 @@ function Menu({ onAddToCart }) {
   }
 
   return (
-    <div className="menu-container"> {/* Added a class for potential styling */}
-      <h2 className="text-2xl font-bold mb-4">Menu</h2> {/* Example Tailwind class */}
-      <ul className="space-y-4"> {/* Example Tailwind class */}
-        {menuItems.map((item) => (
-          <li key={item._id} className="border-b pb-4"> {/* Example Tailwind class */}
-            <h3 className="text-xl font-semibold">{item.name}</h3>
-            {item.description && <p className="text-gray-600 italic">{item.description}</p>} {/* Conditional description */}
-            <p><span className="font-medium">Category:</span> {item.category}</p>
-            <p><span className="font-medium">Price:</span> {formatPrice(item.price)}</p>
-            {/* Add the button and onClick handler */}
-            <button 
-              onClick={() => onAddToCart ? onAddToCart(item) : console.warn('onAddToCart prop not provided to Menu component')} 
-              className="mt-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-              // Optional: Add disabled state if needed
-              // disabled={!onAddToCart} 
-              aria-label={`Add ${item.name} to order`} // Accessible name for the button
-            >
-              Add to Order
-            </button>
-          </li>
-        ))}
-      </ul>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {menuItems.map((item) => (
+        <div key={item._id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
+          <div className="p-6">
+            <h3 className="text-2xl font-bold mb-3 text-gray-800">{item.name}</h3>
+            <p className="text-gray-600 mb-6 text-lg">{item.description}</p>
+            <div className="flex flex-col space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-blue-600">{formatPrice(item.price)}</span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleQuantityChange(item._id, -1)}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+                    aria-label={`Decrease quantity of ${item.name}`}
+                  >
+                    -
+                  </button>
+                  <span className="w-12 text-center text-xl font-medium">{itemQuantities[item._id] || 0}</span>
+                  <button
+                    onClick={() => handleQuantityChange(item._id, 1)}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+                    aria-label={`Increase quantity of ${item.name}`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => handleAddToCart(item)}
+                  disabled={!itemQuantities[item._id]}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
+                  aria-label={`Add ${itemQuantities[item._id]} ${item.name} to order`}
+                >
+                  Add to Order
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
-
-export default Menu; 

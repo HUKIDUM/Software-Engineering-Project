@@ -98,7 +98,20 @@ exports.placeOrder = async (req, res, next) => {
         // next(err); // Or pass to error middleware
     }
 };
-
+// @desc    Get all orders for the logged-in user
+// @route   GET /api/v1/orders
+// @access  Private
+exports.getUserOrders = async (req, res, next) => {
+    try {
+      const orders = await Order.find({ user: req.user._id })
+        .sort({ createdAt: -1 })
+        .populate('items.menuItem', 'name price');
+      res.status(200).json({ success: true, data: orders });
+    } catch (err) {
+      console.error('Error fetching user orders:', err);
+      res.status(500).json({ success: false, error: 'Server Error fetching your orders' });
+    }
+  };
 // @desc    Get a single order by ID
 // @route   GET /api/v1/orders/:orderId
 // @access  Private (Owner or Admin)
@@ -167,4 +180,150 @@ exports.getAllOrders = async (req, res, next) => {
         res.status(500).json({ success: false, error: 'Server Error fetching orders' });
         // next(err);
     }
-}; 
+};
+
+// @desc    Delete an order (Admin only)
+// @route   DELETE /api/v1/orders/:orderId
+// @access  Private/Admin
+exports.deleteOrder = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const deletedOrder = await Order.findByIdAndDelete(orderId);
+        if (!deletedOrder) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+        res.status(200).json({ success: true, message: 'Order deleted' });
+    } catch (err) {
+        console.error('Error deleting order:', err);
+        res.status(500).json({ success: false, message: 'Server Error deleting order' });
+    }
+};
+
+// @desc    Update an order's quantities (Admin only)
+// @route   PUT /api/v1/orders/:orderId
+// @access  Private/Admin
+exports.updateOrder = async (req, res) => {
+    const { orderId } = req.params;
+    const { items, status } = req.body;               // <-- include status
+  
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res
+        .status(404)
+        .json({ success: false, error: `Order not found with id: ${orderId}` });
+    }
+  
+    try {
+      // 1) Load the order
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res
+          .status(404)
+          .json({ success: false, error: `Order not found with id: ${orderId}` });
+      }
+  
+      // 2) If we're only updating the status, short-circuit here:
+      if (typeof status === 'string') {
+        order.status = status;
+        await order.save();
+  
+        // Emit update event
+        const io = req.app.get('io');
+        if (io) {
+          io.emit('order_updated', order);
+        }
+  
+        return res.status(200).json({ success: true, data: order });
+      }
+  
+      // 3) Otherwise, fall back to items-based logic:
+      //    if no items provided, delete the order
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        await Order.findByIdAndDelete(orderId);
+  
+        const io = req.app.get('io');
+        if (io) {
+          io.emit('order_deleted', orderId);
+        }
+        return res
+          .status(200)
+          .json({ success: true, message: 'Order deleted as it has no items' });
+      }
+  
+      // 4) Validate & recalculate price
+      let calculatedTotalPrice = 0;
+      const itemsToProcess = [];
+  
+      for (const item of items) {
+        if (
+          !item.menuItem ||
+          !mongoose.Types.ObjectId.isValid(item.menuItem) ||
+          item.quantity == null ||
+          item.quantity < 0 ||
+          !Number.isInteger(item.quantity)
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              error: `Invalid item data: ${JSON.stringify(item)}. Ensure menuItem is a valid ObjectId and quantity is a non-negative integer.`,
+            });
+        }
+  
+        // Skip items with zero quantity
+        if (item.quantity === 0) {
+          continue;
+        }
+  
+        const menuItemDetails = await MenuItem.findById(item.menuItem);
+        if (!menuItemDetails) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              error: `Menu item with ID ${item.menuItem} not found.`,
+            });
+        }
+        if (!menuItemDetails.isAvailable) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              error: `Menu item '${menuItemDetails.name}' (ID: ${item.menuItem}) is currently unavailable.`,
+            });
+        }
+  
+        calculatedTotalPrice += menuItemDetails.price * item.quantity;
+        itemsToProcess.push({
+          menuItem: menuItemDetails._id,
+          quantity: item.quantity,
+          // (optionally) priceAtOrder: menuItemDetails.price
+        });
+      }
+  
+      calculatedTotalPrice = Math.round(calculatedTotalPrice * 100) / 100;
+  
+      // 5) Save updated items & price
+      order.items      = itemsToProcess;
+      order.totalPrice = calculatedTotalPrice;
+      await order.save();
+  
+      // Emit update event
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('order_updated', order);
+      }
+  
+      return res.status(200).json({ success: true, data: order });
+    } catch (err) {
+      console.error('Error updating order:', err);
+      if (err.name === 'CastError' && err.kind === 'ObjectId') {
+        return res
+          .status(400)
+          .json({ success: false, error: `Invalid ID format: ${err.value}` });
+      }
+      return res
+        .status(500)
+        .json({ success: false, error: 'Server Error updating order' });
+    }
+  };

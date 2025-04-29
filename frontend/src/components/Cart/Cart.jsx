@@ -12,7 +12,7 @@ const formatPrice = (price) => {
 };
 
 // Accept cartItems prop and potentially onPlaceOrder later
-function Cart({ cartItems = [], onPlaceOrder }) {
+function Cart({ cartItems = [], onPlaceOrder, onRemoveItem }) {
 
   // Calculate total price
   const totalPrice = cartItems.reduce((sum, item) => {
@@ -43,9 +43,18 @@ function Cart({ cartItems = [], onPlaceOrder }) {
                 Qty: {item.quantity} @ {formatPrice(item.price)} each
               </span>
             </div>
-            <span className="font-medium">
-              {formatPrice(item.price * item.quantity)} {/* Item subtotal */}
-            </span>
+            <div className="flex items-center space-x-4">
+              <span className="font-medium">
+                {formatPrice(item.price * item.quantity)} {/* Item subtotal */}
+              </span>
+              <button
+                onClick={() => onRemoveItem(item._id)}
+                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                aria-label={`Remove ${item.name} from cart`}
+              >
+                ×
+              </button>
+            </div>
           </li>
         ))}
       </ul>

@@ -67,6 +67,24 @@ export const getOrderById = async (orderId, token) => {
   }
 };
 
+// Get all orders for a user
+export const getUserOrders = async (token) => {
+  if (!token) throw new Error('Authentication token is required');
+  const res = await fetch('/api/v1/orders', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    let errorBody;
+    try { errorBody = await res.json(); } catch {}
+    const msg = errorBody?.error || res.statusText;
+    throw new Error(`Failed to fetch orders: ${res.status} ${msg}`);
+  }
+  return await res.json(); // { success, data: Order[] }
+};
+
 // Get All Orders (Admin)
 export const getAllOrdersAdmin = async (token) => {
   if (!token) {
@@ -98,6 +116,74 @@ export const getAllOrdersAdmin = async (token) => {
     return await response.json(); // Return the { success, count, data: orders }
   } catch (error) {
     console.error('Error fetching all orders (admin):', error);
+    throw error;
+  }
+};
+
+// Update Order (Admin)
+export const updateOrder = async (orderId, updates, token) => {
+  if (!orderId) {
+    throw new Error('Order ID is required');
+  }
+  if (!token) {
+    throw new Error('Authentication token is required');
+  }
+
+  try {
+    const response = await fetch(`/api/v1/orders/${orderId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = await response.json();
+      } catch (e) { /* Ignore */ }
+      const errorMessage = errorBody?.message || response.statusText;
+      throw new Error(`Failed to update order: ${response.status} ${errorMessage}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Error updating order ${orderId}:`, error);
+    throw error;
+  }
+};
+
+// Delete Order (Admin)
+export const deleteOrder = async (orderId, token) => {
+  if (!orderId) {
+    throw new Error('Order ID is required');
+  }
+  if (!token) {
+    throw new Error('Authentication token is required');
+  }
+
+  try {
+    const response = await fetch(`/api/v1/orders/${orderId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = await response.json();
+      } catch (e) { /* Ignore */ }
+      const errorMessage = errorBody?.message || response.statusText;
+      throw new Error(`Failed to delete order: ${response.status} ${errorMessage}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Error deleting order ${orderId}:`, error);
     throw error;
   }
 }; 

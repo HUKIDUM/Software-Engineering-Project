@@ -1,108 +1,114 @@
+// frontend/src/app/admin/orders/page.jsx
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { io } from 'socket.io-client'; // Import socket.io client
+import { io } from 'socket.io-client';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAllOrdersAdmin } from '@/lib/orderApi';
+import { getAllOrdersAdmin, updateOrder, deleteOrder } from '@/lib/orderApi';
+import { FiTrash2 } from 'react-icons/fi';
 
-// Helper to format price (consider moving to utils)
-const formatPrice = (price) => {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
-};
+// Helper to format price
+const formatPrice = price =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
 
-function AdminOrdersPage() {
+export default function AdminOrdersPage() {
   const { user, token, loading: authLoading } = useAuth();
   const router = useRouter();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('all');
 
+  // Fetch orders on mount
   useEffect(() => {
-    // Wait for auth state to load
-    if (authLoading) {
-      return; 
-    }
-
-    // Redirect if not logged in or not an admin
+    if (authLoading) return;
     if (!user || user.role !== 'admin') {
-      router.push('/'); // Or to a login page / unauthorized page
+      router.push('/');
       return;
     }
-
-    // Fetch orders if user is admin
     if (token) {
-      const fetchOrders = async () => {
+      (async () => {
         setLoading(true);
-        setError(null);
         try {
-          const response = await getAllOrdersAdmin(token);
-          if (response.success && Array.isArray(response.data)) {
-            setOrders(response.data);
+          const res = await getAllOrdersAdmin(token);
+          if (res.success && Array.isArray(res.data)) {
+            setOrders(res.data);
           } else {
-            throw new Error(response.error || 'Failed to fetch orders or invalid data format');
+            throw new Error(res.error || 'Invalid data');
           }
         } catch (err) {
-          console.error("Error fetching all orders:", err);
-          setError(err.message || 'Could not fetch orders.');
+          console.error(err);
+          setError(err.message);
         } finally {
           setLoading(false);
         }
-      };
-      fetchOrders();
+      })();
     }
   }, [user, token, authLoading, router]);
 
-  // Effect for Socket.IO connection and real-time updates
+  // Real-time updates via Socket.IO
   useEffect(() => {
-    // Only establish connection if user is an admin
-    if (user?.role !== 'admin' || !token) {
-      return; // Don't connect if not admin or no token
-    }
+    if (user?.role !== 'admin' || !token) return;
+    const socket = io('http://localhost:5003', { withCredentials: true });
 
-    // Connect to the Socket.IO server
-    // IMPORTANT: Use the correct URL for your backend
-    const socket = io('http://localhost:5003', {
-       withCredentials: true // Important if your backend CORS requires it
-    });
+    socket.on('new_order', newOrder =>
+      setOrders(prev => [newOrder, ...prev])
+    );
+    socket.on('order_updated', updated =>
+      setOrders(prev => prev.map(o => (o._id === updated._id ? updated : o)))
+    );
+    socket.on('order_deleted', id =>
+      setOrders(prev => prev.filter(o => o._id !== id))
+    );
 
-    socket.on('connect', () => {
-      console.log('Socket connected to server:', socket.id);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-    });
-
-    socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
-      // Optionally update UI state to show connection error
-    });
-
-    // Listen for new orders emitted from the backend
-    socket.on('new_order', (newOrder) => {
-      console.log('Received new order via socket:', newOrder);
-      // Add the new order to the beginning of the list
-      // Ensure data format matches initial fetch if needed
-      // Consider adding population on backend emission if needed here
-      setOrders((prevOrders) => [newOrder, ...prevOrders]);
-    });
-
-    // Cleanup function: Disconnect socket when component unmounts
     return () => {
-      console.log('Disconnecting socket...');
       socket.disconnect();
     };
+  }, [user, token]);
 
-  }, [user, token]); // Re-run effect if user or token changes
+  // Change order status
+  const handleChangeStatus = async (orderId, newStatus) => {
+    try {
+      const res = await updateOrder(orderId, { status: newStatus }, token);
+      if (res.success) {
+        setOrders(prev =>
+          prev.map(o => (o._id === orderId ? res.data : o))
+        );
+      } else {
+        throw new Error(res.error || 'Status update failed');
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
+  };
+
+  // Delete order
+  const handleDeleteOrder = async orderId => {
+    if (!confirm('Delete this order?')) return;
+    try {
+      await deleteOrder(orderId, token);
+      setOrders(prev => prev.filter(o => o._id !== orderId));
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
+  };
+
+  // Filter orders by status
+  const displayedOrders = orders.filter(order => {
+    if (filterStatus === 'all') return true;
+    return order.status === filterStatus;
+  });
 
   if (authLoading || loading) {
     return <div className="p-4 text-center">Loading orders...</div>;
   }
 
-  // This check might be redundant due to redirect, but good practice
   if (!user || user.role !== 'admin') {
-    return <div className="p-4 text-center text-red-600">Access Denied.</div>; 
+    return <div className="p-4 text-center text-red-600">Access Denied</div>;
   }
 
   if (error) {
@@ -111,38 +117,121 @@ function AdminOrdersPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Admin - All Food Orders</h1>
+      <h1 className="text-3xl font-bold mb-4">Admin - All Food Orders</h1>
 
-      {orders.length === 0 ? (
-        <p>No orders found.</p>
+      {/* Filter Dropdown */}
+      <div className="mb-4">
+        <label htmlFor="statusFilter" className="mr-2 font-medium">
+          Filter:
+        </label>
+        <select
+          id="statusFilter"
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value)}
+          className="border rounded px-2 py-1"
+        >
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="preparing">Preparing</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+
+      {displayedOrders.length === 0 ? (
+        <p>No orders found for selected status.</p>
       ) : (
         <div className="overflow-x-auto shadow-md rounded-lg">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                {/* <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th> */}
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ordered At</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Order ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  User
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Items
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Total
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Ordered At
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {orders.map((order) => (
+              {displayedOrders.map(order => (
                 <tr key={order._id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" title={order._id}>{order._id.slice(-6)}...</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.user?.name || 'N/A'} ({order.user?.email || 'N/A'})</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    <ul>
-                      {order.items.map((item, index) => (
-                        <li key={index}>{item.menuItem?.name || 'Unknown Item'} x {item.quantity}</li>
-                      ))}
-                    </ul>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {order._id.slice(-6)}...
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatPrice(order.totalPrice)}</td>
-                  {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{order.status}</td> */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(order.createdAt).toLocaleString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {order.user?.name || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {order.items.length}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {formatPrice(order.totalPrice)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {new Date(order.createdAt).toLocaleString()}
+                  </td>
+
+                  {/* STATUS BADGE */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
+                        order.status === 'pending'
+                          ? 'bg-red-100 text-red-800'
+                          : order.status === 'preparing'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : order.status === 'done'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+                  </td>
+
+                  {/* ACTIONS */}
+                  <td className="px-6 py-4 whitespace-nowrap space-x-2">
+                    {order.status === 'pending' && (
+                      <button
+                        onClick={() =>
+                          handleChangeStatus(order._id, 'preparing')
+                        }
+                        className="px-3 py-1 bg-yellow-500 text-white rounded"
+                      >
+                        Preparing
+                      </button>
+                    )}
+                    {order.status === 'preparing' && (
+                      <button
+                        onClick={() =>
+                          handleChangeStatus(order._id, 'done')
+                        }
+                        className="px-3 py-1 bg-green-500 text-white rounded"
+                      >
+                        Done
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteOrder(order._id)}
+                      className="px-3 py-1 bg-red-500 text-white rounded"
+                    >
+                      <FiTrash2 />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -152,5 +241,3 @@ function AdminOrdersPage() {
     </div>
   );
 }
-
-export default AdminOrdersPage; 

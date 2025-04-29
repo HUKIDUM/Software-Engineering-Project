@@ -1,161 +1,171 @@
+// frontend/src/components/Navbar.tsx
+
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiCalendar, FiMapPin, FiUser, FiLogOut, FiCoffee, FiShoppingBag } from 'react-icons/fi';
+import { io, Socket } from 'socket.io-client';
+import type { IconType } from 'react-icons';
+import {
+  FiHome,
+  FiCalendar,
+  FiMapPin,
+  FiCoffee,
+  FiShoppingBag,
+  FiSettings,
+  FiUser,
+  FiLogOut
+} from 'react-icons/fi';
+import { getAllOrdersAdmin } from '@/lib/orderApi';
 
-const Navbar = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+interface NavLink {
+  href: string;
+  label: string;
+  icon: IconType;
+}
+
+const navLinks: NavLink[] = [
+  { href: '/dashboard',        label: 'Dashboard',        icon: FiHome       },
+  { href: '/reservations',     label: 'My Reservations',  icon: FiCalendar   },
+  { href: '/coworking-spaces', label: 'Spaces',           icon: FiMapPin     },
+  { href: '/menu',             label: 'Food Menu',        icon: FiCoffee     },
+];
+
+const adminLinks: NavLink[] = [
+  { href: '/admin',               label: 'Admin Home',          icon: FiSettings    },
+  { href: '/admin/menu',          label: 'Menu Management',     icon: FiCoffee      },
+  { href: '/admin/orders',        label: 'Manage Orders',       icon: FiShoppingBag },
+  { href: '/admin/reservations',  label: 'Manage Reservations', icon: FiCalendar    },
+];
+
+export default function Navbar() {
+  const { user, token, isAuthenticated, logout } = useAuth();
   const pathname = usePathname();
+  const [pendingCount, setPendingCount] = useState(0);
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (href: string) =>
+    pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+
+  // Fetch pending count and subscribe to real-time updates
+  useEffect(() => {
+    if (user?.role === 'admin' && token) {
+      const fetchPending = async () => {
+        try {
+          const res = await getAllOrdersAdmin(token);
+          if (res.success && Array.isArray(res.data)) {
+            setPendingCount(res.data.filter(o => o.status === 'pending').length);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      fetchPending();
+
+      const socket: Socket = io('http://localhost:5003', { withCredentials: true });
+      socket.on('new_order',   () => fetchPending());
+      socket.on('order_updated', () => fetchPending());
+      socket.on('order_deleted', () => fetchPending());
+
+      return () => {
+        socket.disconnect();
+      };
+    }
+  }, [user, token]);
 
   return (
-    <nav className="bg-white shadow-lg shadow-indigo-500/25 sticky top-0 z-50">
+    <nav className="bg-white shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex">
-            <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-xl font-bold text-indigo-600">
-                CoWork Space
+        {/* Desktop */}
+        <div className="hidden sm:flex justify-between items-center h-16">
+          {/* Logo + Main Links */}
+          <div className="flex items-center space-x-6">
+            <Link href="/" className="text-2xl font-bold text-indigo-600 hover:text-indigo-700">
+              CoWork Space
+            </Link>
+
+            {isAuthenticated && navLinks.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                  isActive(href)
+                    ? 'border-indigo-500 text-gray-900'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                <Icon className="mr-1 h-5 w-5" /> {label}
               </Link>
-            </div>
-            {isAuthenticated && (
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <Link
-                  href="/dashboard"
-                  className={`${
-                    isActive('/dashboard')
+            ))}
+
+            {/* Admin dropdown */}
+            {user?.role === 'admin' && (
+              <div className="relative inline-block">
+                <button
+                  onClick={e => e.stopPropagation()}
+                  className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                    isActive('/admin') || isActive('/admin/orders')
                       ? 'border-indigo-500 text-gray-900'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                  }`}
                 >
-                  <FiHome className="mr-1" /> Dashboard
-                </Link>
-                <Link
-                  href="/reservations"
-                  className={`${
-                    isActive('/reservations')
-                      ? 'border-indigo-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                >
-                  <FiCalendar className="mr-1" /> My Reservations
-                </Link>
-                <Link
-                  href="/coworking-spaces"
-                  className={`${
-                    isActive('/coworking-spaces')
-                      ? 'border-indigo-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                >
-                  <FiMapPin className="mr-1" /> Spaces
-                </Link>
-                <Link
-                  href="/menu"
-                  className={`${
-                    isActive('/menu')
-                      ? 'border-indigo-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                >
-                  <FiCoffee className="mr-1" /> Food Menu
-                </Link>
-                {user?.role === 'admin' && (
-                  <>
+                  <FiSettings className="mr-1 h-5 w-5" />
+                  Manage Orders
+                  {pendingCount > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold text-white bg-red-600 rounded-full">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+                <div className="absolute left-0 mt-2 w-48 bg-white shadow-lg rounded-md z-10">
+                  {adminLinks.map(({ href, label, icon: Icon }) => (
                     <Link
-                      href="/admin"
-                      className={`${
-                        isActive('/admin')
-                          ? 'border-indigo-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                      key={href}
+                      href={href}
+                      className={`flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
+                        isActive(href) ? 'font-semibold' : ''
+                      }`}
                     >
-                      Admin Home
+                      <Icon className="mr-2 h-4 w-4" /> {label}
                     </Link>
-                    <Link
-                      href="/admin/orders"
-                      className={`${
-                        pathname.startsWith('/admin/orders')
-                          ? 'border-indigo-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                    >
-                      Manage Orders
-                    </Link>
-                    <Link
-                      href="/admin/reservations"
-                      className={`${
-                        pathname.startsWith('/admin/reservations')
-                          ? 'border-indigo-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                    >
-                      Manage Reservations
-                    </Link>
-                    <Link
-                      href="/admin/membership-programs"
-                      className={`${
-                        pathname.startsWith('/admin/membership-programs')
-                          ? 'border-indigo-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                    >
-                      Manage Membership Programs
-                    </Link>
-                  </>
-                )}
+                  ))}
+                </div>
               </div>
             )}
           </div>
-          <div className="hidden sm:ml-6 sm:flex sm:items-center">
+
+          {/* User/Auth */}
+          <div className="flex items-center space-x-4">
             {isAuthenticated ? (
-              <div className="flex items-center space-x-4">
-                <button
-                  title="View Cart"
-                  className="text-gray-500 hover:text-gray-700 p-1 rounded-full relative"
-                >
-                  <FiShoppingBag className="h-6 w-6" />
-                </button>
-                <Link
-                  href="/profile"
-                  className="text-gray-500 hover:text-gray-700 flex items-center"
-                >
-                  <FiUser className="mr-1" />
-                  {user?.name}
-                </Link>
+              <>
+                <span className="text-sm font-medium text-gray-700">{user?.name}</span>
                 <button
                   onClick={() => logout()}
-                  className="text-gray-500 hover:text-gray-700 flex items-center"
+                  className="inline-flex items-center px-2 py-1 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
                 >
-                  <FiLogOut className="mr-1" />
-                  Logout
+                  <FiLogOut className="mr-1 h-5 w-5" /> Logout
                 </button>
-              </div>
+              </>
             ) : (
-              <div className="flex items-center space-x-4">
-                <Link
-                  href="/auth/login"
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  Login
-                </Link>
-                <Link
-                  href="/auth/register"
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-500"
-                >
-                  Register
-                </Link>
-              </div>
+              <Link
+                href="/auth/login"
+                className="inline-flex items-center px-2 py-1 text-sm font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+              >
+                <FiUser className="mr-1 h-5 w-5" /> Login
+              </Link>
             )}
           </div>
+        </div>
+
+        {/* Mobile (unchanged) */}
+        <div className="sm:hidden flex justify-between items-center h-16">
+          <Link href="/" className="text-2xl font-bold text-indigo-600">CoWork Space</Link>
+          <button className="p-2 rounded-md focus:outline-none focus:ring-2">
+            {/* Mobile menu toggle icon here */}
+          </button>
         </div>
       </div>
     </nav>
   );
-};
-
-export default Navbar;
+}

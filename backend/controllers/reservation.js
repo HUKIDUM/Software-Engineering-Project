@@ -497,10 +497,10 @@ exports.createCoworkingSpace = async (req, res) => {
 };
 
 // @desc    Update requested equipment in a reservation
-// @route   PUT /api/v1/reservations/:reservationId/equipment
+// @route   PUT /api/v1/reservations/:id/equipment
 // @access  Private (User who created the reservation)
 exports.updateRequestedEquipment = async (req, res, next) => {
-    const { reservationId } = req.params;
+    const { id } = req.params;
     const { requestedEquipment } = req.body;
 
     // Validate input
@@ -509,10 +509,10 @@ exports.updateRequestedEquipment = async (req, res, next) => {
     }
 
     // Find the reservation
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await Reservation.findById(id);
 
     if (!reservation) {
-        return next(new ErrorResponse(`Reservation not found with id of ${reservationId}`, 404));
+        return next(new ErrorResponse(`Reservation not found with id of ${id}`, 404));
     }
 
     // Ensure the user owns the reservation

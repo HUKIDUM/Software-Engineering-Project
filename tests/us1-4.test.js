@@ -12,8 +12,8 @@ test('should edit reservation and decrease equipment quantity to zero', async ({
   await page.waitForTimeout(1000);  // Wait for login page to load
 
   // Step 3: Fill in the email and password fields
-  await page.getByRole('textbox', { name: 'Email address' }).fill('OwenEatDog@gmail.com');
-  await page.getByRole('textbox', { name: 'Password' }).fill('123456');
+  await page.getByRole('textbox', { name: 'Email address' }).fill('orderuser@test.com');
+  await page.getByRole('textbox', { name: 'Password' }).fill('password123');
 
   // Step 4: Click on the 'Sign in' button
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -24,7 +24,7 @@ test('should edit reservation and decrease equipment quantity to zero', async ({
   await page.waitForTimeout(1000);  // Wait for the reservations page to load
 
   // Step 6: Click on the 'Edit' button for the second reservation
-  await page.getByRole('button', { name: 'Edit' }).nth(1).click();
+  await page.getByRole('button', { name: 'Edit' }).click();
   await page.waitForTimeout(1000);  // Wait for the reservation details to load
 
   // Function to decrease the quantity of an item until it reaches 0

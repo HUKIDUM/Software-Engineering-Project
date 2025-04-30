@@ -8,8 +8,8 @@ test('should edit reservations', async ({ page }) => {
   await page.getByRole('link', { name: 'Login' }).click();
 
   // Step 3: Fill in the email and password fields
-  await page.getByRole('textbox', { name: 'Email address' }).fill('OwenEatDog@gmail.com');
-  await page.getByRole('textbox', { name: 'Password' }).fill('123456');
+  await page.getByRole('textbox', { name: 'Email address' }).fill('orderuser@test.com');
+  await page.getByRole('textbox', { name: 'Password' }).fill('password123');
 
   // Step 4: Click on the 'Sign in' button
   await page.getByRole('button', { name: 'Sign in' }).click();

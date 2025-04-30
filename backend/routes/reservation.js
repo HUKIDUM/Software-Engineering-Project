@@ -240,6 +240,9 @@ router.get('/booked/:coworkingSpace/:date', protect, getBookedSlots);
  */
 router.put('/:id/requested-equipment', protect, updateRequestedEquipment);
 
+// Additional route to match the frontend's expectation
+router.put('/:id/equipment', protect, updateRequestedEquipment);
+
 /**
  * @swagger
  * /reservations/{id}:

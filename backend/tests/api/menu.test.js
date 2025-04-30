@@ -4,9 +4,16 @@ const dotenv = require('dotenv'); // Import dotenv
 // Destructure app from the server export
 const { app } = require('../../server'); 
 const MenuItem = require('../../models/MenuItem');
+const User = require('../../models/user');
+const jwt = require('jsonwebtoken');
 
 // Load .env.test variables
 dotenv.config({ path: './.env.test' }); 
+
+// Test user and authentication token
+let testUser;
+let authToken;
+let testMenuItems = [];
 
 beforeAll(async () => {
     // Connect to the real test database
@@ -22,65 +29,114 @@ beforeAll(async () => {
             process.exit(1);
         }
     }
-    // Clean collection before tests start for this file
-    await MenuItem.deleteMany({});
+    
+    // Create a test user for authentication (don't delete existing users)
+    testUser = await User.findOne({ email: 'menutest@example.com' });
+    if (!testUser) {
+        testUser = await User.create({
+            name: 'Test User',
+            email: 'menutest@example.com',
+            password: 'password123',
+            telephoneNumber: '1234567890',
+            role: 'user' // Regular user role
+        });
+    }
+    
+    // Generate JWT token for the test user
+    authToken = jwt.sign(
+        { userId: testUser._id },
+        process.env.JWT_SECRET || 'testsecret',
+        { expiresIn: '1h' }
+    );
 });
 
 afterAll(async () => {
+    // Clean up only our test user and test menu items
+    if (testUser) {
+        await User.findOneAndDelete({ email: 'menutest@example.com' });
+    }
+    
+    // Clean up only the menu items we created for this test
+    if (testMenuItems.length > 0) {
+        await MenuItem.deleteMany({ _id: { $in: testMenuItems.map(item => item._id) } });
+    }
+    
     // Disconnect Mongoose
     await mongoose.disconnect();
     console.log('Menu API Test: Disconnected from Test DB');
 });
 
 beforeEach(async () => {
-    // Clean up menu items before each test
-    await MenuItem.deleteMany({});
+    // Clean up only test menu items before each test
+    if (testMenuItems.length > 0) {
+        await MenuItem.deleteMany({ _id: { $in: testMenuItems.map(item => item._id) } });
+        testMenuItems = [];
+    }
 });
 
 describe('GET /api/v1/menu', () => {
-    it('should return 200 OK and an empty array when no menu items exist', async () => {
-        const res = await request(app).get('/api/v1/menu');
+    it('should return 200 OK when authenticated', async () => {
+        const res = await request(app)
+            .get('/api/v1/menu')
+            .set('Authorization', `Bearer ${authToken}`);
+            
         expect(res.statusCode).toEqual(200);
-        expect(res.body).toBeInstanceOf(Array);
-        expect(res.body.length).toBe(0);
+        expect(Array.isArray(res.body)).toBe(true);
     });
 
-    it('should return only available menu items', async () => {
-        // Seed database with items
-        await MenuItem.create([
-            { name: 'Available Coffee', price: 3.50, category: 'Drink', isAvailable: true },
-            { name: 'Unavailable Tea', price: 3.00, category: 'Drink', isAvailable: false },
-            { name: 'Available Sandwich', price: 7.50, category: 'Food', isAvailable: true },
+    it('should return available menu items', async () => {
+        // Create test menu items
+        const items = await MenuItem.create([
+            { name: 'Test Available Coffee', price: 3.50, category: 'Drink', isAvailable: true },
+            { name: 'Test Unavailable Tea', price: 3.00, category: 'Drink', isAvailable: false },
+            { name: 'Test Available Sandwich', price: 7.50, category: 'Food', isAvailable: true },
         ]);
+        testMenuItems = items; // Store for cleanup
 
-        const res = await request(app).get('/api/v1/menu');
+        const res = await request(app)
+            .get('/api/v1/menu')
+            .set('Authorization', `Bearer ${authToken}`);
 
         expect(res.statusCode).toEqual(200);
-        expect(res.body).toBeInstanceOf(Array);
-        expect(res.body.length).toBe(2); // Only 2 available items
-        expect(res.body.some(item => item.name === 'Unavailable Tea')).toBe(false); // Ensure unavailable item is not returned
+        expect(Array.isArray(res.body)).toBe(true);
+        
+        // Check if our test available items are in the response
+        const availableItemNames = ['Test Available Coffee', 'Test Available Sandwich'];
+        const returnedTestItems = res.body.filter(item => 
+            availableItemNames.includes(item.name)
+        );
+        
+        expect(returnedTestItems.length).toBe(2);
+        expect(res.body.some(item => item.name === 'Test Unavailable Tea')).toBe(false);
     });
 
-    it('should return items with the correct structure (_id, name, description, price, category)', async () => {
-        // Seed database
-        await MenuItem.create(
-            { name: 'Test Muffin', description: 'A tasty muffin', price: 2.99, category: 'Snack', isAvailable: true }
+    it('should return items with the correct structure', async () => {
+        // Create a test menu item
+        const item = await MenuItem.create(
+            { name: 'Test Structure Muffin', description: 'A test muffin', price: 2.99, category: 'Snack', isAvailable: true }
         );
+        testMenuItems.push(item); // Store for cleanup
 
-        const res = await request(app).get('/api/v1/menu');
+        const res = await request(app)
+            .get('/api/v1/menu')
+            .set('Authorization', `Bearer ${authToken}`);
 
         expect(res.statusCode).toEqual(200);
-        expect(res.body.length).toBe(1);
-        const returnedItem = res.body[0];
-
-        // Check for _id (Mongoose default) or id (if transformed)
+        
+        // Find our test item in the response
+        const returnedItem = res.body.find(i => i.name === 'Test Structure Muffin');
+        expect(returnedItem).toBeDefined();
+        
+        // Check its structure
         expect(returnedItem._id || returnedItem.id).toBeDefined(); 
-        expect(returnedItem.name).toBe('Test Muffin');
-        expect(returnedItem.description).toBe('A tasty muffin');
+        expect(returnedItem.name).toBe('Test Structure Muffin');
+        expect(returnedItem.description).toBe('A test muffin');
         expect(returnedItem.price).toBe(2.99);
         expect(returnedItem.category).toBe('Snack');
     });
 
-    // Add test for potential errors (e.g., database connection issue) if needed
-    // it('should return 500 if database error occurs', async () => { ... });
+    it('should return 401 if no authentication is provided', async () => {
+        const res = await request(app).get('/api/v1/menu'); // No auth token
+        expect(res.statusCode).toEqual(401);
+    });
 }); 

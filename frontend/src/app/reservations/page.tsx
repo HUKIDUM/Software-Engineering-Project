@@ -146,7 +146,7 @@ const ReservationsPage = () => {
         }));
 
       // Update equipment requests
-      await api.put(`/reservations/${editingReservation._id}/equipment`, {
+      await api.put(`/reservations/${editingReservation._id}/requested-equipment`, {
         requestedEquipment: equipmentPayload, // Send the mapped payload
         reservationId: editingReservation._id
       });
